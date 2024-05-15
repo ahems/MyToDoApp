@@ -5,7 +5,7 @@ from services import Service
 from openai import AzureOpenAI
 
 class RecommendationEngine:
-       def __init__(self):
+    def __init__(self):
         self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", '')
         api_key = os.environ.get("AZURE_OPENAI_API_KEY", '')
         endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", '')
