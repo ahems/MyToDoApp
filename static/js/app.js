@@ -10,6 +10,33 @@ document.addEventListener("DOMContentLoaded", function() {
         }
     };
 
+    //override the default behavior of the nav links so that we can 
+    //turn on a spinner control when the user clicks on the recommendations tab
+    const navLinks = document.getElementsByClassName('nav-link');
+    Array.from(navLinks).forEach((navLink) => {
+        navLink.addEventListener('click', function(e) {
+            e.preventDefault();
+            const currentPath = this.getAttribute('href');
+            const rootUrl = window.location.origin;
+
+            //turn on the spinner control if the user clicks on the recommendations tab
+            if (this.getAttribute('id') === 'recommendations-tab') {
+                var recommend_pane = document.querySelector("span[id='recommendation-spinner']");
+                if (recommend_pane) {
+                    recommend_pane.removeAttribute('hidden');
+            } 
+        }
+            window.location.href = rootUrl + currentPath;
+        });
+    });
+
+    window.handleRefresh = function() {
+        var recommend_pane = document.querySelector("span[id='recommendation-spinner']");
+        if (recommend_pane) {
+            recommend_pane.removeAttribute('hidden');
+        } 
+    };
+
     switch (true) {
         case currentPath.includes('/edit'):
             setActiveTab('edit-tab');
@@ -26,6 +53,24 @@ document.addEventListener("DOMContentLoaded", function() {
         default:
             break;
     }
+
+    const myModal = document.getElementById('confirmModal')
+    const deleteButtons = document.getElementsByClassName('delete-btn');
+    Array.from(deleteButtons).forEach((deleteButton) => {
+        deleteButton.addEventListener('click', function(e) {
+            e.stopPropagation();
+            e.preventDefault();
+            const url = this.getAttribute('data-url');
+            document.getElementById('deleteLink').setAttribute('href', url);
+            const taskname_paragraph = document.querySelector("p[id='taskName']");
+            const taskname = this.getAttribute('data-taskname');
+            taskname_paragraph.textContent = taskname;
+            myModal.addEventListener('shown.bs.modal', () => {
+                deleteButton.focus()
+            })
+            clearHighlight();
+        });
+    });
     
     const highlightedItemId = localStorage.getItem(HIGHLIGHTEDITEM);
     console.log('highlightedItemId', highlightedItemId);
