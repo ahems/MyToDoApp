@@ -1,0 +1,9 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+     "adminUserObjectId": {
+      "value": "fdc4b647-db30-41f5-857f-7bcbc52f09ab"
+    }
+  }
+}

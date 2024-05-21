@@ -1,8 +1,3 @@
-###############################################################################
-## Sprint 7: Advanced Styling in your Web Application
-## Feature 1: Advanced Web App Styling
-## User Story 4: Confirm before deleting a task
-###############################################################################
 import os
 import json
 from flask import Flask, render_template, request, redirect, url_for, g
@@ -11,17 +6,35 @@ from recommendation_engine import RecommendationEngine
 from tab import Tab
 from priority import Priority
 from context_processors import inject_current_date
+from dotenv import load_dotenv
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
+import pyodbc
+
+load_dotenv()
 
 app = Flask(__name__)
 
-
 # mssql+pyodbc://<sql user name>:<password>@<azure sql server>.database.windows.net:1433/todo?driver=ODBC+Driver+17+for+SQL+Server
-sql_user_name = os.environ.get("AZURE_SQL_USER");
-sql_password = os.environ.get("AZURE_SQL_PASSWORD");
-azure_sql_server= os.environ.get("AZURE_SQL_SERVER");
-azure_sql_port = os.environ.get("AZURE_SQL_PORT");
+print(pyodbc.drivers())
 
-connection_string = f"mssql+pyodbc://{sql_user_name}:{sql_password}@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+17+for+SQL+Server"
+key_vault_name = os.environ.get("KEY_VAULT_NAME")
+if key_vault_name:
+    print('Using Key Vault for secrets')
+    credential = DefaultAzureCredential()
+    key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
+    client = SecretClient(vault_url=key_vault_uri, credential=credential)
+    sql_user_name = client.get_secret("AZURESQLUSER").value;
+    sql_password = client.get_secret("AZURESQLPASSWORD").value;
+    azure_sql_server= client.get_secret("AZURESQLSERVER").value;
+    azure_sql_port = client.get_secret("AZURESQLPORT").value;
+else:
+    sql_user_name = os.environ.get("AZURE_SQL_USER");
+    sql_password = os.environ.get("AZURE_SQL_PASSWORD");
+    azure_sql_server= os.environ.get("AZURE_SQL_SERVER");
+    azure_sql_port = os.environ.get("AZURE_SQL_PORT");
+
+connection_string = f"mssql+pyodbc://{sql_user_name}:{sql_password}@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+18+for+SQL+Server"
 
 # Use local database if Azure SQL server is not configured
 if not azure_sql_server:
@@ -31,7 +44,7 @@ if not azure_sql_server:
     todo_file = os.path.join(basedir, 'todo_list.txt')     # Create the path to the to-do list file using the directory
     app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(basedir, 'todos.db')
 else:
-    print('Using Azure SQL database')
+    print('Using Azure SQL Server - ' + azure_sql_server)
     app.config["SQLALCHEMY_DATABASE_URI"] = connection_string
 
 

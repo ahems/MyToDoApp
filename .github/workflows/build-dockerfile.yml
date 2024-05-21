@@ -1,0 +1,24 @@
+name: Build and Push Docker Image with ACR
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Login to ACR
+      uses: azure/docker-login@v1
+      with:
+        login-server: ${{ secrets.ACR_REGISTRY }}
+        username: ${{ secrets.ACR_USERNAME }}
+        password: ${{ secrets.ACR_PASSWORD }}
+
+    - name: ACR Build & Push
+      uses: azure/acr-build@v1
+      with:
+        registry: ${{ secrets.ACR_NAME }}
+        image: mytodoapp:latest
