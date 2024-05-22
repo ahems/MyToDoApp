@@ -1,5 +1,11 @@
-# Use an official Python runtime as a parent image
-FROM python:latest
+# Use an official Python runtime as a parent image - Debian 11
+FROM python:3.12.3-bullseye
+
+# Install ODBC Driver for SQL Server
+RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
+    curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
+    apt-get update && \
+    ACCEPT_EULA=Y apt-get install msodbcsql18 -y
 
 # Set the working directory in the container to /app
 WORKDIR /app

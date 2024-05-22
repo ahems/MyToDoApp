@@ -10,13 +10,22 @@ from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 import pyodbc
+from opencensus.ext.azure.log_exporter import AzureLogHandler
+import logging
 
 load_dotenv()
+
+# Set up logging
+instrumentation_key = os.environ.get("INSTRUMENTATION_KEY")
+logger = logging.getLogger(__name__)
+
+if instrumentation_key:
+    logger.addHandler(AzureLogHandler(connection_string='InstrumentationKey=${instrumentation_key}'))
 
 app = Flask(__name__)
 
 # mssql+pyodbc://<sql user name>:<password>@<azure sql server>.database.windows.net:1433/todo?driver=ODBC+Driver+17+for+SQL+Server
-print(pyodbc.drivers())
+logger.info(pyodbc.drivers())
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
 if key_vault_name:
