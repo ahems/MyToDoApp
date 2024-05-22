@@ -1,11 +1,13 @@
-
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
+param userAssignedManagedIdenityPrincipalId string
+param openAiDeploymentName string
+param openAiEndpoint string
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
 param location string = resourceGroup().location
 param sqlAdminUsername string = uniqueString(newGuid())
 @secure()
 param sqlAdminPassword string = newGuid()
-param adminUserObjectId string
+param cognitiveservicesname string
 
 var sqlDatabaseName = 'todo'
 
@@ -60,6 +62,36 @@ resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' = {
   }
 }
 
+resource OpenAiDeployment 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+  parent: keyVault
+  name: 'AZUREOPENAIDEPLOYMENTNAME'
+  properties: {
+    value: openAiDeploymentName
+    contentType: 'text/plain'
+  }
+}
+
+resource account 'Microsoft.CognitiveServices/accounts@2021-04-30' existing = {
+  name: cognitiveservicesname
+}
+
+resource OpenAiKey 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+  parent: keyVault
+  name: 'AZUREOPENAIAPIKEY'
+  properties: {
+    value: account.listKeys().key1
+    contentType: 'text/plain'
+  }
+}
+resource Endpoint 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+  parent: keyVault
+  name: 'AZUREOPENAIENDPOINT'
+  properties: {
+    value: openAiEndpoint
+    contentType: 'text/plain'
+  }
+}
+
 resource admin 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   parent: keyVault
   name: 'AZURESQLUSER'
@@ -96,12 +128,13 @@ resource port 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   }
 }
 
+
 // Apply Key Vault Secrets User
 resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name: guid(keyVault.id, adminUserObjectId)
+  name: guid(keyVault.id, userAssignedManagedIdenityPrincipalId)
   scope: keyVault
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
-    principalId: adminUserObjectId
+    principalId: userAssignedManagedIdenityPrincipalId
   }
 }
