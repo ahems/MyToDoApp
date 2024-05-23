@@ -28,8 +28,10 @@ app = Flask(__name__)
 logger.info(pyodbc.drivers())
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
-if key_vault_name:
-    print('Using Key Vault for secrets')
+AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
+
+if AZURE_CLIENT_ID:
+    print('Using Managed Identity to access Key Vault')
     credential = DefaultAzureCredential()
     key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
     client = SecretClient(vault_url=key_vault_uri, credential=credential)

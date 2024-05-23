@@ -1,5 +1,4 @@
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
-param userAssignedManagedIdenityPrincipalId string
 param openAiDeploymentName string
 param openAiEndpoint string
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
@@ -125,16 +124,5 @@ resource port 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   properties: {
     value: '1433'
     contentType: 'text/plain'
-  }
-}
-
-
-// Apply Key Vault Secrets User
-resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name: guid(keyVault.id, userAssignedManagedIdenityPrincipalId)
-  scope: keyVault
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
-    principalId: userAssignedManagedIdenityPrincipalId
   }
 }
