@@ -3,13 +3,29 @@ import json
 import asyncio
 from services import Service
 from openai import AzureOpenAI
+from azure.identity import DefaultAzureCredential
+from azure.keyvault.secrets import SecretClient
 
 class RecommendationEngine:
     def __init__(self):
-        self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", '')
-        api_key = os.environ.get("AZURE_OPENAI_API_KEY", '')
-        endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", '')
-        use_open_ai = os.environ.get("USE_AZURE_OPENAI", 'True')
+
+        key_vault_name = os.environ.get("KEY_VAULT_NAME")
+        AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
+
+        if AZURE_CLIENT_ID:
+            print('Using Managed Identity to Get Open AI Credentials from Key Vault')
+            credential = DefaultAzureCredential()
+            key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
+            client = SecretClient(vault_url=key_vault_uri, credential=credential)
+            self.deployment = client.get_secret("AZURE_OPENAI_DEPLOYMENT_NAME").value;
+            api_key = client.get_secret("AZURE_OPENAI_API_KEY").value;
+            endpoint = client.get_secret("AZURE_OPENAI_ENDPOINT").value;
+            use_open_ai = client.get_secret("USE_AZURE_OPENAI", 'True').value;
+        else:
+            self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", '')
+            api_key = os.environ.get("AZURE_OPENAI_API_KEY", '')
+            endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", '')
+            use_open_ai = os.environ.get("USE_AZURE_OPENAI", 'True')
 
         #uses the USE_AZURE_OPENAI variable from the .env file to determine which AI service to use
         #False means use OpenAI, True means use Azure OpenAI
@@ -20,8 +36,7 @@ class RecommendationEngine:
                         api_version="2024-02-15-preview"
                         )
         else:
-            raise Exception("OpenAI not implemented")     
-
+            raise Exception("OpenAI not implemented")
 
     async def get_recommendations(self, keyword_phrase, previous_links_str=None):
         prompt = f"""Please return 5 recommendations based on the input string: '{keyword_phrase}' using correct JSON syntax that contains a title and a hyperlink back to the supporting website. RETURN ONLY JSON AND NOTHING ELSE"""

@@ -1,5 +1,5 @@
 # Use an official Python runtime as a parent image - Debian 11
-FROM python:3.8.11-slim-bullseye
+FROM python:3.12.3-bullseye
 
 # Install v18 ODBC Driver for SQL Server for Debian 11
 RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
