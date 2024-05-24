@@ -1,3 +1,4 @@
+param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
 param aciName string = 'todoapp-ci-${uniqueString(resourceGroup().id)}'
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
@@ -16,6 +17,10 @@ resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30
 
 resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' existing = {
   name: containerRegistryName
+}
+
+resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
+  name: appInsightsName
 }
 
 resource aci 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
@@ -44,7 +49,7 @@ resource aci 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
       ports: [
         {
           protocol: 'TCP'
-          port: 5000
+          port: 80
         }
       ]
     }
@@ -61,11 +66,15 @@ resource aci 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
               name: 'AZURE_CLIENT_ID'
               value: azidentity.properties.clientId
             }
+            {
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              value: appInsights.properties.ConnectionString
+            }
           ]
           image: aciImage
           ports: [
             {
-              port: 5000
+              port: 80
               protocol: 'TCP'
             }
           ]

@@ -10,17 +10,16 @@ from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
 import pyodbc
-from opencensus.ext.azure.log_exporter import AzureLogHandler
-import logging
-
+from azure.monitor.opentelemetry import configure_azure_monitor
+from opentelemetry import trace
+from logging import INFO, getLogger
 load_dotenv()
 
-# Set up logging
-instrumentation_key = os.environ.get("INSTRUMENTATION_KEY")
-logger = logging.getLogger(__name__)
-
-if instrumentation_key:
-    logger.addHandler(AzureLogHandler(connection_string='InstrumentationKey=${instrumentation_key}'))
+# Configure OpenTelemetry to use Azure Monitor with the 
+# APPLICATIONINSIGHTS_CONNECTION_STRING environment variable.
+configure_azure_monitor(logger_name="my_todoapp_logger",)
+logger = getLogger("my_todoapp_logger")
+logger.setLevel(INFO)
 
 app = Flask(__name__)
 
