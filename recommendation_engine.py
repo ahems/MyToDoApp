@@ -17,10 +17,10 @@ class RecommendationEngine:
             credential = DefaultAzureCredential()
             key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
             client = SecretClient(vault_url=key_vault_uri, credential=credential)
-            self.deployment = client.get_secret("AZURE_OPENAI_DEPLOYMENT_NAME").value;
-            api_key = client.get_secret("AZURE_OPENAI_API_KEY").value;
-            endpoint = client.get_secret("AZURE_OPENAI_ENDPOINT").value;
-            use_open_ai = client.get_secret("USE_AZURE_OPENAI", 'True').value;
+            self.deployment = client.get_secret("AZUREOPENAIDEPLOYMENTNAME").value;
+            api_key = client.get_secret("AZUREOPENAIAPIKEY").value;
+            endpoint = client.get_secret("AZUREOPENAIENDPOINT").value;
+            use_open_ai = client.get_secret("USEAZUREOPENAI", 'True').value;
         else:
             self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", '')
             api_key = os.environ.get("AZURE_OPENAI_API_KEY", '')

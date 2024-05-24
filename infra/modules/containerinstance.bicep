@@ -1,4 +1,5 @@
 param aciName string = 'todoapp-ci-${uniqueString(resourceGroup().id)}'
+param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
 param aciDnsLabel string = 'todoapp${uniqueString(resourceGroup().id)}'
 param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
@@ -13,21 +14,26 @@ resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30
   location: location
 }
 
+resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' existing = {
+  name: containerRegistryName
+}
+
 resource aci 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   name: aciName
   location: location
+  dependsOn: [acr]
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: {}
+    userAssignedIdentities: {
+      '${azidentity.id}': {}
+    }
   }
   properties: {
     imageRegistryCredentials: [
       {
-        identity: 'string'
-        identityUrl: 'string'
-        password: 'string'
-        server: 'string'
-        username: 'string'
+        server: '${containerRegistryName}.azurecr.io'
+        username: acr.listCredentials().username  
+        password: acr.listCredentials().passwords[0].value
       }
     ]
     osType: 'Linux'
@@ -38,7 +44,7 @@ resource aci 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
       ports: [
         {
           protocol: 'TCP'
-          port: 80
+          port: 5000
         }
       ]
     }
@@ -48,12 +54,21 @@ resource aci 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
         properties: {
           environmentVariables: [
             {
-              name: 'string'
-              secureValue: 'string'
-              value: 'string'
+              name: 'KEY_VAULT_NAME'
+              value: keyVaultName
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: azidentity.properties.clientId
             }
           ]
           image: aciImage
+          ports: [
+            {
+              port: 5000
+              protocol: 'TCP'
+            }
+          ]
           resources: {
             requests: {
               cpu: aciCpuCores
