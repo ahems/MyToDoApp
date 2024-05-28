@@ -1,6 +1,6 @@
 metadata description = 'Creates an Azure OpenAI instance.'
-param name string
-param location string = resourceGroup().location
+param name string = 'todoapp-openai-${uniqueString(resourceGroup().id)}'
+param location string = 'canadaeast'
 param tags object = {}
 @description('The custom subdomain name used to access the API. Defaults to the value of the name parameter.')
 param customSubDomainName string = name
@@ -8,7 +8,7 @@ param deployments array = []
 param kind string = 'OpenAI'
 
 @allowed([ 'Enabled', 'Disabled' ])
-param publicNetworkAccess string = 'Disabled'
+param publicNetworkAccess string = 'Enabled'
 param sku object = {
   name: 'S0'
 }
@@ -30,7 +30,7 @@ resource account 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
     customSubDomainName: customSubDomainName
     publicNetworkAccess: publicNetworkAccess
     networkAcls: networkAcls
-    disableLocalAuth: true
+    disableLocalAuth: false
     dynamicThrottlingEnabled: false
     restrictOutboundNetworkAccess: false
   }
