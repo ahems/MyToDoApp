@@ -1,4 +1,5 @@
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
+param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
 param acaName string = 'todoapp-aca-${uniqueString(resourceGroup().id)}'
 param containerAppEnvName string = 'todoapp-acaenv-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
@@ -18,13 +19,16 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2020-03-01-preview'
   name: workspaceName
 }
 
-resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' = {
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
   name: identityName
-  location: location
 }
 
 resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' existing = {
   name: containerRegistryName
+}
+
+resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
+  name: appInsightsName
 }
 
 resource containerAppEnv 'Microsoft.App/managedEnvironments@2022-06-01-preview' = {
@@ -94,8 +98,8 @@ resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
               value: azidentity.properties.clientId
             }
             {
-              name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
-              value: workspace.properties.customerId
+              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+              value: appInsights.properties.ConnectionString
             }
           ]
         }

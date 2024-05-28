@@ -90,6 +90,9 @@ module cognitiveservices 'modules/openai.bicep' = {
     deployments: openAiDeployments
     customSubDomainName: cognitiveservicesname
   }
+  dependsOn: [
+    keyvault
+  ]
 }
 
 module keyvault 'modules/keyvault.bicep' = {
@@ -104,13 +107,10 @@ module database 'modules/database.bicep' = {
   scope: resourceGroup(rgName)
   name: 'Deploy-Database'
   params: {
-    cognitiveservicesname: cognitiveservicesname
-    openAiDeploymentName: cognitiveservices.outputs.name
     keyVaultName: keyVaultName
     sqlServerName: sqlServerName
   }
   dependsOn: [
-    cognitiveservices
     keyvault
   ]
 }

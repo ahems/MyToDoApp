@@ -1,11 +1,9 @@
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
-param openAiDeploymentName string = 'gpt-35-turbo'
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
 param location string = resourceGroup().location
 param sqlAdminUsername string = uniqueString(newGuid())
 @secure()
 param sqlAdminPassword string = newGuid()
-param cognitiveservicesname string = 'todoapp-ai-${uniqueString(resourceGroup().id)}'
 
 var sqlDatabaseName = 'todo'
 
@@ -48,36 +46,6 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2021-02-01-preview' = {
 
 resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
   name: keyVaultName
-}
-
-resource OpenAiDeployment 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
-  parent: keyVault
-  name: 'AZUREOPENAIDEPLOYMENTNAME'
-  properties: {
-    value: openAiDeploymentName
-    contentType: 'text/plain'
-  }
-}
-
-resource account 'Microsoft.CognitiveServices/accounts@2021-04-30' existing = {
-  name: cognitiveservicesname
-}
-
-resource OpenAiKey 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
-  parent: keyVault
-  name: 'AZUREOPENAIAPIKEY'
-  properties: {
-    value: account.listKeys().key1
-    contentType: 'text/plain'
-  }
-}
-resource Endpoint 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
-  parent: keyVault
-  name: 'AZUREOPENAIENDPOINT'
-  properties: {
-    value: account.properties.endpoint
-    contentType: 'text/plain'
-  }
 }
 
 resource admin 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
