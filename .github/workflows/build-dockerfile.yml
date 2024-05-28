@@ -1,6 +1,8 @@
-name: Build and Push Docker Image with ACR
+name: Build and Push Docker Image to ACR
 
-on: [push]
+on: 
+  push:
+  workflow_dispatch:
 
 jobs:
   build:
