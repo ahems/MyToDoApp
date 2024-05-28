@@ -20,23 +20,16 @@ class RecommendationEngine:
             self.deployment = client.get_secret("AZUREOPENAIDEPLOYMENTNAME").value;
             api_key = client.get_secret("AZUREOPENAIAPIKEY").value;
             endpoint = client.get_secret("AZUREOPENAIENDPOINT").value;
-            use_open_ai = client.get_secret("USEAZUREOPENAI", 'True').value;
         else:
+            print('Using Environment Variables for Open AI Credentials')
             self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", '')
             api_key = os.environ.get("AZURE_OPENAI_API_KEY", '')
             endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", '')
-            use_open_ai = os.environ.get("USE_AZURE_OPENAI", 'True')
 
-        #uses the USE_AZURE_OPENAI variable from the .env file to determine which AI service to use
-        #False means use OpenAI, True means use Azure OpenAI
-        selectedService = Service.AzureOpenAI if use_open_ai == "True" else Service.OpenAI
-        if selectedService == Service.AzureOpenAI:
-            self.client = AzureOpenAI(azure_endpoint = endpoint, 
-                        api_key=api_key,  
-                        api_version="2024-02-15-preview"
-                        )
-        else:
-            raise Exception("OpenAI not implemented")
+        self.client = AzureOpenAI(azure_endpoint = endpoint, 
+                    api_key=api_key,  
+                    api_version="2024-02-15-preview"
+                    )
 
     async def get_recommendations(self, keyword_phrase, previous_links_str=None):
         prompt = f"""Please return 5 recommendations based on the input string: '{keyword_phrase}' using correct JSON syntax that contains a title and a hyperlink back to the supporting website. RETURN ONLY JSON AND NOTHING ELSE"""
