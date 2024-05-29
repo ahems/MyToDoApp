@@ -1,11 +1,9 @@
-metadata description = 'Creates an Azure OpenAI instance.'
 param name string = 'todoapp-openai-${uniqueString(resourceGroup().id)}'
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param location string = 'canadaeast'
 param tags object = {}
 @description('The custom subdomain name used to access the API. Defaults to the value of the name parameter.')
 param customSubDomainName string = name
-param deployments array = []
 param kind string = 'OpenAI'
 param openAiDeploymentName string = 'gpt-35-turbo'
 
@@ -22,6 +20,77 @@ param networkAcls object = empty(allowedIpRules) ? {
   ipRules: allowedIpRules
   defaultAction: 'Deny'
 }
+param embeddingModelName string = ''
+param embeddingDeploymentName string = ''
+param embeddingDeploymentVersion string = ''
+param embeddingDeploymentCapacity int = 0
+param embeddingDimensions int = 0
+var embedding = {
+  modelName: !empty(embeddingModelName) ? embeddingModelName : 'text-embedding-ada-002'
+  deploymentName: !empty(embeddingDeploymentName) ? embeddingDeploymentName : 'embedding'
+  deploymentVersion: !empty(embeddingDeploymentVersion) ? embeddingDeploymentVersion : '2'
+  deploymentCapacity: embeddingDeploymentCapacity != 0 ? embeddingDeploymentCapacity : 30
+  dimensions: embeddingDimensions != 0 ? embeddingDimensions : 1536
+}
+param openAiHost string = 'azure'
+param chatGptModelName string = ''
+param chatGptDeploymentName string = ''
+param chatGptDeploymentVersion string = ''
+param chatGptDeploymentCapacity int = 0
+var chatGpt = {
+  modelName: !empty(chatGptModelName) ? chatGptModelName : startsWith(openAiHost, 'azure') ? 'gpt-35-turbo' : 'gpt-3.5-turbo'
+  deploymentName: !empty(chatGptDeploymentName) ? chatGptDeploymentName : 'chat'
+  deploymentVersion: !empty(chatGptDeploymentVersion) ? chatGptDeploymentVersion : '0613'
+  deploymentCapacity: chatGptDeploymentCapacity != 0 ? chatGptDeploymentCapacity : 30
+}
+
+param gpt4vModelName string = 'gpt-4'
+param gpt4vDeploymentName string = 'gpt-4v'
+param gpt4vModelVersion string = 'vision-preview'
+param gpt4vDeploymentCapacity int = 10
+param useGPT4V bool = false
+
+var defaultOpenAiDeployments = [
+  {
+    name: chatGpt.deploymentName
+    model: {
+      format: 'OpenAI'
+      name: chatGpt.modelName
+      version: chatGpt.deploymentVersion
+    }
+    sku: {
+      name: 'Standard'
+      capacity: chatGpt.deploymentCapacity
+    }
+  }
+  {
+    name: embedding.deploymentName
+    model: {
+      format: 'OpenAI'
+      name: embedding.modelName
+      version: embedding.deploymentVersion
+    }
+    sku: {
+      name: 'Standard'
+      capacity: embedding.deploymentCapacity
+    }
+  }
+]
+
+var deployments = concat(defaultOpenAiDeployments, useGPT4V ? [
+  {
+    name: gpt4vDeploymentName
+    model: {
+      format: 'OpenAI'
+      name: gpt4vModelName
+      version: gpt4vModelVersion
+    }
+    sku: {
+      name: 'Standard'
+      capacity: gpt4vDeploymentCapacity
+    }
+  }
+] : [])
 
 resource account 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
   name: name

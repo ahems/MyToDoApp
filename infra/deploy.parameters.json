@@ -5,51 +5,6 @@
     "cognitiveservicesLocation": {
       "value": "canadaeast"
     },
-    "embeddingModelName": {
-      "value": ""
-    },
-    "embeddingDeploymentName": {
-      "value": ""
-    },
-    "embeddingDeploymentVersion": {
-      "value": ""
-    },
-    "embeddingDeploymentCapacity": {
-      "value": 0
-    },
-    "embeddingDimensions": {
-      "value": 0
-    },
-    "openAiHost": {
-      "value": "azure"
-    },
-    "chatGptModelName": {
-      "value": ""
-    },
-    "chatGptDeploymentName": {
-      "value": ""
-    },
-    "chatGptDeploymentVersion": {
-      "value": ""
-    },
-    "chatGptDeploymentCapacity": {
-      "value": 0
-    },
-    "gpt4vModelName": {
-      "value": "gpt-4"
-    },
-    "gpt4vDeploymentName": {
-      "value": "gpt-4v"
-    },
-    "gpt4vModelVersion": {
-      "value": "vision-preview"
-    },
-    "gpt4vDeploymentCapacity": {
-      "value": 10
-    },
-    "useGPT4V": {
-      "value": false
-    },
      "rgName": {
       "value": "My-ToDo-App"
     }

@@ -24,13 +24,14 @@ logger.setLevel(INFO)
 app = Flask(__name__)
 
 # mssql+pyodbc://<sql user name>:<password>@<azure sql server>.database.windows.net:1433/todo?driver=ODBC+Driver+17+for+SQL+Server
-logger.info(pyodbc.drivers())
+# logger.info(pyodbc.drivers())
+driver="{ODBC Driver 18 for SQL Server}"
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
 AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
 
 if AZURE_CLIENT_ID:
-    print('Using Managed Identity to access Key Vault')
+    logger.info('Using Managed Identity to access Key Vault')
     credential = DefaultAzureCredential()
     key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
     client = SecretClient(vault_url=key_vault_uri, credential=credential)
@@ -46,6 +47,8 @@ else:
 
 connection_string = f"mssql+pyodbc://{sql_user_name}:{sql_password}@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+18+for+SQL+Server"
 
+# TODO: Use a Managed Identity to access Database e.g. connection_string = f"Driver=" + driver + ";Server=" + azure_sql_server + ";PORT=" + azure_sql_port + ";Database=todo;Authentication=ActiveDirectoryMsi"
+
 # Use local database if Azure SQL server is not configured
 if not azure_sql_server:
     print('Azure SQL not configured, Using local SQLLite database')
@@ -57,15 +60,18 @@ else:
     print('Using Azure SQL Server - ' + azure_sql_server)
     app.config["SQLALCHEMY_DATABASE_URI"] = connection_string
 
-
+logger.info('Initializing App')
 db.init_app(app)
+logger.info('App Initialized')
 
 @app.context_processor
 def inject_common_variables():
     return inject_current_date()
 
+logger.info('Initializing Database')
 with app.app_context():
     db.create_all()
+logger.info('Database Initialized')
 
 @app.before_request
 def load_data_to_g():

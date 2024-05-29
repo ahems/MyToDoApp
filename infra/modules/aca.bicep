@@ -1,20 +1,34 @@
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
+param openAiName string = 'todoapp-openai-${uniqueString(resourceGroup().id)}'
+param sqlServerName string = 'todoapp-sql-${uniqueString(resourceGroup().id)}'
 param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
 param acaName string = 'todoapp-aca-${uniqueString(resourceGroup().id)}'
-param containerAppEnvName string = 'todoapp-acaenv-${uniqueString(resourceGroup().id)}'
+param containerAppEnvName string = 'todoapp-env-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
 param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param imageNameAndVersion string = 'mytodoapp:latest'
-param image string = '${containerRegistryName}.azurecr.io/${imageNameAndVersion}'
 param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
+param openAiDeploymentName string = 'gpt-35-turbo'
+param azureSqlPort string = '1433'
 @minValue(0)
 @maxValue(25)
 param minReplica int = 1
 @minValue(0)
 @maxValue(25)
 param maxReplica int = 3
+@secure()
+param azuresqlpassword string
 
+var image = '${containerRegistryName}.azurecr.io/${imageNameAndVersion}'
+
+resource sqlServer 'Microsoft.Sql/servers@2021-02-01-preview' existing = {
+  name: sqlServerName
+}
+
+resource openAi 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
+  name: openAiName
+}
 resource workspace 'Microsoft.OperationalInsights/workspaces@2020-03-01-preview' existing = {
   name: workspaceName
 }
@@ -38,6 +52,7 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2022-06-01-preview' 
     name: 'Consumption'
   }
   properties: {
+    zoneRedundant: false
     appLogsConfiguration: {
       destination: 'log-analytics'
       logAnalyticsConfiguration: {
@@ -45,6 +60,8 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2022-06-01-preview' 
         sharedKey: workspace.listKeys().primarySharedKey
       }
     }
+    daprAIConnectionString: appInsights.properties.ConnectionString
+    daprAIInstrumentationKey: appInsights.properties.InstrumentationKey
   }
 }
 
@@ -60,6 +77,40 @@ resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
   properties: {
     managedEnvironmentId: containerAppEnv.id
     configuration: {
+      secrets: [
+        {
+          name: 'azure-openai-deployment-name'
+          value: openAiDeploymentName
+        }
+        {
+          name: 'azure-openai-api-key'
+          value: openAi.listKeys().key1
+        }
+        {
+          name: 'azure-openai-endpoint'
+          value: openAi.properties.endpoint     
+        }
+        {
+          name: 'azure-sql-server'
+          value: sqlServer.properties.fullyQualifiedDomainName    
+        }
+        {
+          name: 'azure-sql-user'
+          value: sqlServer.properties.administratorLogin
+        }
+        {
+          name: 'azure-sql-password'
+          value: azuresqlpassword
+        }
+        {
+          name: 'azure-sql-port'
+          value: azureSqlPort
+        }
+        {
+          name: 'applicationinsights-connection-string'
+          value: appInsights.properties.ConnectionString
+        }
+      ]
       ingress: {
         external: true
         targetPort: 80

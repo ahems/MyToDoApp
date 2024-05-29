@@ -1,0 +1,41 @@
+# Ignore files and directories commonly excluded in Docker images
+*.bicep
+
+# Ignore build artifacts
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Ignore development and system files
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+*.log
+*.swp
+.DS_Store
+
+# Ignore version control files
+.git
+.gitignore
+.svn
+.hg
+
+# Ignore editor-specific files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Ignore documentation and test files
+docs/
+test/
+tests/
+
+.venv/
+.github/
+
+*.md

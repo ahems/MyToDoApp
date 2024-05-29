@@ -12,5 +12,6 @@ resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' = {
     tenantId: subscription().tenantId
     enableRbacAuthorization: true
     enableSoftDelete:false
+    enabledForTemplateDeployment : true
   }
 }

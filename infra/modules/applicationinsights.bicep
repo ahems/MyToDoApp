@@ -9,6 +9,10 @@ resource workspace 'Microsoft.OperationalInsights/workspaces@2020-03-01-preview'
     sku: {
       name: 'PerGB2018'
     }
+    workspaceCapping: {
+      dailyQuotaGb: 1
+    }
+    retentionInDays: 30
   }
 }
 
