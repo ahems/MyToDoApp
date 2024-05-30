@@ -9,7 +9,7 @@ param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceG
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param imageNameAndVersion string = 'mytodoapp:latest'
 param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
-param openAiDeploymentName string = 'gpt-35-turbo'
+param openAiDeploymentName string = 'chat'
 param azureSqlPort string = '1433'
 
 @minValue(0)

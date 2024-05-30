@@ -5,7 +5,7 @@ param tags object = {}
 @description('The custom subdomain name used to access the API. Defaults to the value of the name parameter.')
 param customSubDomainName string = name
 param kind string = 'OpenAI'
-param openAiDeploymentName string = 'gpt-35-turbo'
+param openAiDeploymentName string = 'chat'
 
 @allowed([ 'Enabled', 'Disabled' ])
 param publicNetworkAccess string = 'Enabled'
