@@ -19,9 +19,5 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Make port 80 available to the world outside this container
 EXPOSE 80
 
-# Setup an app user so the container doesn't run as the root user
-RUN useradd app
-USER app
-
 # Run app.py when the container launches
 CMD ["python", "app.py"]

@@ -1,5 +1,7 @@
 param acrName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
+param diagnosticsName string = 'acr-diagnostics-${toLower(uniqueString(resourceGroup().id))}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
+param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
 
 resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
   name: identityName
@@ -35,12 +37,41 @@ resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' = {
         status: 'Disabled'
       }
       trustPolicy: {
-        status: 'Disabled'
+        status: 'Enabled'
       }
     }
     adminUserEnabled: true
     zoneRedundancy: 'Disabled'
   }
 }
+
+resource workspace 'Microsoft.OperationalInsights/workspaces@2020-03-01-preview' existing = {
+  name: workspaceName
+}
+
+resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: acr
+  name: diagnosticsName
+  properties: {
+    workspaceId: workspace.id
+    logs: [
+      {
+        category: 'ContainerRegistryRepositoryEvents'
+        enabled: true
+      }
+      {
+        category: 'ContainerRegistryLoginEvents'
+        enabled: true
+      }
+    ]
+    metrics: [
+      {
+        category: 'AllMetrics'
+        enabled: true
+      }
+    ]
+  }
+}
+
 
 output name string = acr.name
