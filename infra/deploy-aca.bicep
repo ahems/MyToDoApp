@@ -11,6 +11,7 @@ param imageNameAndVersion string = 'mytodoapp:latest'
 param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
 param openAiDeploymentName string = 'chat'
 param azureSqlPort string = '1433'
+param revisionSuffix string = uniqueString(utcNow())
 
 @minValue(0)
 @maxValue(25)
@@ -27,6 +28,7 @@ module aca  'modules/aca.bicep' = {
   name: 'aca'
   params: {
     azuresqlpassword:keyVault.getSecret('AZURESQLPASSWORD')
+    revisionSuffix:revisionSuffix
     location: location
     keyVaultName: keyVaultName
     openAiName: openAiName

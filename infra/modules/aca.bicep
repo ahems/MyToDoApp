@@ -19,6 +19,7 @@ param minReplica int = 1
 param maxReplica int = 3
 @secure()
 param azuresqlpassword string
+param revisionSuffix string
 
 var image = '${containerRegistryName}.azurecr.io/${imageNameAndVersion}'
 
@@ -130,7 +131,7 @@ resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
       ]
     }
     template: {
-      revisionSuffix: 'firstrevision'
+      revisionSuffix: revisionSuffix
       containers: [
         {
           name: acaName
