@@ -16,23 +16,6 @@ resource acrRoleAssignment 'Microsoft.Authorization/roleAssignments@2020-04-01-p
     principalId: azidentity.properties.principalId
   }
 }
-resource acrTask 'Microsoft.ContainerRegistry/registries/tasks@2019-06-01-preview' = {
-  name: '${acr.name}/${acrTaskName}'
-  properties: {
-    platform: {
-      os: 'Linux'
-      architecture: 'amd64'
-    }
-    step: {
-      type: 'Docker'
-      dockerFilePath: 'Dockerfile'
-      contextPath: './'
-      isPushEnabled: true
-      noCache: false
-    }
-    status: 'Enabled'
-  }
-}
 
 resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' = {
   name: acrName

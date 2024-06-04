@@ -39,3 +39,4 @@ tests/
 .github/
 
 *.md
+.env
