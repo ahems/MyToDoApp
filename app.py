@@ -265,5 +265,5 @@ def logout():
     return redirect(auth.log_out(url_for("index", _external=True)))
 
 if __name__ == "__main__":
-    #app.run(host="0.0.0.0",port=80,debug=False)
-    app.run(host="localhost",port=5000,debug=True)
+    app.run(host="0.0.0.0",port=80,debug=False)
+    # app.run(host="localhost",port=5000,debug=True)
