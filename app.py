@@ -1,6 +1,9 @@
 import os
 import json
-from flask import Flask, render_template, request, redirect, url_for, g
+import identity.web
+import requests
+from flask import Flask, render_template, request, redirect, url_for, g, session, url_for
+from flask_session import Session
 from database import db, Todo
 from recommendation_engine import RecommendationEngine
 from tab import Tab
@@ -22,6 +25,7 @@ logger = getLogger("my_todoapp_logger")
 logger.setLevel(INFO)
 
 app = Flask(__name__)
+Session(app, session_type="filesystem")
 
 # mssql+pyodbc://<sql user name>:<password>@<azure sql server>.database.windows.net:1433/todo?driver=ODBC+Driver+17+for+SQL+Server
 # logger.info(pyodbc.drivers())
@@ -39,11 +43,31 @@ if AZURE_CLIENT_ID:
     sql_password = client.get_secret("AZURESQLPASSWORD").value;
     azure_sql_server= client.get_secret("AZURESQLSERVER").value;
     azure_sql_port = client.get_secret("AZURESQLPORT").value;
+    AUTHORITY=client.get_secret("AUTHORITY").value;
+    CLIENTID=client.get_secret("CLIENTID").value;
+    CLIENTSECRET=client.get_secret("CLIENTSECRET").value;
 else:
     sql_user_name = os.environ.get("AZURE_SQL_USER");
     sql_password = os.environ.get("AZURE_SQL_PASSWORD");
     azure_sql_server= os.environ.get("AZURE_SQL_SERVER");
     azure_sql_port = os.environ.get("AZURE_SQL_PORT");
+    AUTHORITY=os.environ.get("AUTHORITY");
+    CLIENTID=os.environ.get("CLIENTID");
+    CLIENTSECRET=os.environ.get("CLIENTSECRET");
+
+# This section is needed for url_for("foo", _external=True) to automatically
+# generate http scheme when this sample is running on localhost,
+# and to generate https scheme when it is deployed behind reversed proxy.
+# See also https://flask.palletsprojects.com/en/2.2.x/deploying/proxy_fix/
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
+
+auth = identity.web.Auth(
+    session=session,
+    authority=AUTHORITY,
+    client_id=CLIENTID,
+    client_credential=CLIENTSECRET,
+)
 
 connection_string = f"mssql+pyodbc://{sql_user_name}:{sql_password}@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+18+for+SQL+Server"
 
@@ -84,7 +108,9 @@ def load_data_to_g():
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    if not auth.get_user():
+        return redirect(url_for("login"))
+    return render_template("index.html", user=auth.get_user())  
 
 @app.route("/add", methods=["POST"])
 def add_todo():
@@ -218,6 +244,26 @@ def completed(id, complete):
     #
     return redirect(url_for('index'))
 
+@app.route("/login")
+def login():
+    return render_template("login.html", **auth.log_in(
+        scopes=["User.Read"], # Have user consent to scopes during log-in
+        redirect_uri=url_for("auth_response", _external=True), # Optional. If present, this absolute URL must match your app's redirect_uri registered in Azure Portal
+        prompt="select_account",  # Optional. More values defined in  https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
+        ))
+
+@app.route("/getAToken")
+def auth_response():
+    result = auth.complete_log_in(request.args)
+    if "error" in result:
+        return render_template("auth_error.html", result=result)
+    return redirect(url_for("index"))
+
+
+@app.route("/logout")
+def logout():
+    return redirect(auth.log_out(url_for("index", _external=True)))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0",port=80,debug=False)
+    #app.run(host="0.0.0.0",port=80,debug=False)
+    app.run(host="localhost",port=5000,debug=True)

@@ -40,3 +40,5 @@ tests/
 
 *.md
 .env
+
+flask_session/
