@@ -15,7 +15,8 @@ class Todo(db.Model):
     notes = db.Column(String(100))
     priority = db.Column(Integer, default=0)
     completed = db.Column(Boolean, default=False)
-    due_date = db.Column(String(50))    
+    due_date = db.Column(String(50))
+    oid = db.Column(String(50))
 
     def __str__(self):
         return self.name

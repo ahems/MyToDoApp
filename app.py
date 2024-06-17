@@ -25,17 +25,19 @@ logger = getLogger("my_todoapp_logger")
 logger.setLevel(INFO)
 
 app = Flask(__name__)
-Session(app, session_type="filesystem")
+app.config['SESSION_TYPE'] = 'filesystem'
+Session(app)
+
 
 # mssql+pyodbc://<sql user name>:<password>@<azure sql server>.database.windows.net:1433/todo?driver=ODBC+Driver+17+for+SQL+Server
-# logger.info(pyodbc.drivers())
+# print(pyodbc.drivers())
 driver="{ODBC Driver 18 for SQL Server}"
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
 AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
 
 if AZURE_CLIENT_ID:
-    logger.info('Using Managed Identity to access Key Vault')
+    print('Using Managed Identity to access Key Vault')
     credential = DefaultAzureCredential()
     key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
     client = SecretClient(vault_url=key_vault_uri, credential=credential)
@@ -84,22 +86,24 @@ else:
     print('Using Azure SQL Server - ' + azure_sql_server)
     app.config["SQLALCHEMY_DATABASE_URI"] = connection_string
 
-logger.info('Initializing App')
+print('Initializing App')
 db.init_app(app)
-logger.info('App Initialized')
+print('App Initialized')
 
 @app.context_processor
 def inject_common_variables():
     return inject_current_date()
 
-logger.info('Initializing Database')
+print('Initializing Database')
 with app.app_context():
     db.create_all()
-logger.info('Database Initialized')
+print('Database Initialized')
 
 @app.before_request
 def load_data_to_g():
-    todos = Todo.query.all()
+    # todos = Todo.query.all()
+    todos = Todo.query.filter_by(oid=session.get("oid")).all()
+    print("Loading data for OID: ", session.get("oid"))
     g.todos = todos 
     g.todo = None
     g.TabEnum = Tab
@@ -110,7 +114,9 @@ def load_data_to_g():
 def index():
     if not auth.get_user():
         return redirect(url_for("login"))
-    return render_template("index.html", user=auth.get_user())  
+    else:
+        session["oid"] = auth.get_user().get("oid")
+        return render_template("index.html", user=auth.get_user())  
 
 @app.route("/add", methods=["POST"])
 def add_todo():
@@ -119,6 +125,8 @@ def add_todo():
     todo = Todo(
         name=request.form["todo"]
     )
+    print("Adding TODO: User OID: ", session.get("oid"))
+    todo.oid = session.get("oid")
 
     # Add the new ToDo to the list
     db.session.add(todo)
@@ -265,5 +273,5 @@ def logout():
     return redirect(auth.log_out(url_for("index", _external=True)))
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0",port=80,debug=False)
-    # app.run(host="localhost",port=5000,debug=True)
+    # app.run(host="0.0.0.0",port=80,debug=False)
+    app.run(host="localhost",port=5000,debug=True)
