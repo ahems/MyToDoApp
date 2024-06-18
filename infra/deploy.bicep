@@ -6,7 +6,20 @@ param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceG
 param acrName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
 param cognitiveservicesLocation string = 'canadaeast'
+param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}'
 param rgName string
+
+module redis 'modules/redis.bicep' = {
+  scope: resourceGroup(rgName)
+  name: 'Deploy-Redis'
+  params: {
+    redisCacheName: redisCacheName
+    keyVaultName: keyVaultName
+  }
+  dependsOn: [
+    keyvault
+  ]
+}
 
 module cognitiveservices 'modules/openai.bicep' = {
   scope: resourceGroup(rgName)

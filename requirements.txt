@@ -13,3 +13,4 @@ Flask-Session2
 werkzeug>=2
 requests>=2,<3
 identity>=0.5.1,<0.6
+redis
