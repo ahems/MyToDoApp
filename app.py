@@ -1,10 +1,9 @@
 import os
 import json
 import identity.web
-import requests
 import redis
 import secrets
-from flask import Flask, render_template, request, redirect, url_for, g, session, url_for
+from flask import Flask, render_template, request, redirect, url_for, session, url_for
 from flask_session import Session
 from database import db, Todo
 from recommendation_engine import RecommendationEngine
@@ -14,7 +13,6 @@ from context_processors import inject_current_date
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
 from azure.keyvault.secrets import SecretClient
-import pyodbc
 from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry import trace
 from logging import INFO, getLogger
@@ -114,14 +112,14 @@ with app.app_context():
 print('Database Initialized')
 
 @app.before_request
-def load_data_to_g():
+def load_data_to_session():
     todos = Todo.query.filter_by(oid=session.get("oid")).all()
     print("Loading data for OID: ", session.get("oid"))
-    g.todos = todos 
-    g.todo = None
-    g.TabEnum = Tab
-    g.PriorityEnum = Priority
-    g.selectedTab = Tab.NONE
+    session["todos"] =todos 
+    session["todo"] =None
+    session["TabEnum"] = Tab
+    session["PriorityEnum"] = Priority
+    session["selectedTab"] =Tab.NONE
 
 @app.route("/")
 def index():
@@ -160,9 +158,9 @@ def details(id):
     if todo is None:
         return redirect(url_for('index'))
     
-    g.selectedTab = Tab.DETAILS
-    g.todos = Todo.query.filter_by(oid=session.get("oid")).all()
-    g.todo = todo
+    session["selectedTab"] =Tab.DETAILS
+    session["todos"] =Todo.query.filter_by(oid=session.get("oid")).all()
+    session["todo"] =todo
     
     return render_template('index.html')
 
@@ -177,9 +175,9 @@ def edit(id):
     if todo is None:
         return redirect(url_for('index'))
 
-    g.selectedTab = Tab.EDIT
-    g.todos = Todo.query.filter_by(oid=session.get("oid")).all()
-    g.todo = todo
+    session["selectedTab"] =Tab.EDIT
+    session["todos"] =Todo.query.filter_by(oid=session.get("oid")).all()
+    session["todo"] =todo
 
     return render_template('index.html')
 
@@ -190,7 +188,7 @@ def update_todo(id):
     if not auth.get_user():
         return redirect(url_for("login"))
 
-    g.selectedTab = Tab.DETAILS
+    session["selectedTab"] =Tab.DETAILS
 
     if request.form.get('cancel') != None:
         return redirect(url_for('index'))
@@ -237,7 +235,7 @@ def remove_todo(id):
     if todo is None:
         return redirect(url_for('index'))
 
-    g.selectedTab = Tab.NONE
+    session["selectedTab"] =Tab.NONE
     db.session.delete(todo)
     db.session.commit()
 
@@ -251,33 +249,33 @@ async def recommend(id, refresh=False):
     if not auth.get_user():
         return redirect(url_for("login"))
 
-    g.selectedTab = Tab.RECOMMENDATIONS
+    session["selectedTab"] =Tab.RECOMMENDATIONS
     recommendation_engine = RecommendationEngine()
-    g.todo = db.session.query(Todo).filter_by(id=id,oid=session.get("oid")).first()
+    session["todo"] =db.session.query(Todo).filter_by(id=id,oid=session.get("oid")).first()
 
-    if g.todo and not refresh:
+    if session["todo"] and not refresh:
         try:
             #attempt to load any saved recommendation from the DB
-            if g.todo.recommendations_json is not None:
-                g.todo.recommendations = json.loads(g.todo.recommendations_json)
+            if session["todo"].recommendations_json is not None:
+                session["todo"].recommendations = json.loads(session["todo"].recommendations_json)
                 return render_template('index.html')
         except ValueError as e:
             print("Error:", e)
 
     previous_links_str = None
     if refresh:
-        g.todo.recommendations = json.loads(g.todo.recommendations_json)
+        session["todo"].recommendations = json.loads(session["todo"].recommendations_json)
         # Extract links
-        links = [item["link"] for item in g.todo.recommendations]
+        links = [item["link"] for item in session["todo"].recommendations]
         # Convert list of links to a single string
         previous_links_str = ", ".join(links)
 
-    g.todo.recommendations = await recommendation_engine.get_recommendations(g.todo.name, previous_links_str)
+    session["todo"].recommendations = await recommendation_engine.get_recommendations(session["todo"].name, previous_links_str)
     
     # Save the recommendations to the database
     try:
-        g.todo.recommendations_json = json.dumps(g.todo.recommendations)
-        db.session.add(g.todo)
+        session["todo"].recommendations_json = json.dumps(session["todo"].recommendations)
+        db.session.add(session["todo"])
         db.session.commit()
     except Exception as e:
         print(f"Error adding and committing todo: {e}")
@@ -291,15 +289,15 @@ def completed(id, complete):
     if not auth.get_user():
         return redirect(url_for("login"))
 
-    g.selectedTab = Tab.NONE
-    g.todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
-    
-    if (g.todo != None and complete == "true"):
-        g.todo.completed = True
-    elif (g.todo != None and complete == "false"):
-        g.todo.completed = False
+    session["selectedTab"] =Tab.NONE
+    session["todo"] =Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+
+    if (session["todo"] != None and complete == "true"):
+        session["todo"].completed = True
+    elif (session["todo"] != None and complete == "false"):
+        session["todo"].completed = False
     #
-    db.session.add(g.todo)
+    db.session.add(session["todo"])
     db.session.commit()
     #
     return redirect(url_for('index'))

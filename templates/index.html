@@ -23,7 +23,7 @@
             <div class="col-7">
                 <form>
                     <ol class="list-group">
-                        {% for todo in g.todos %}
+                        {% for todo in session["todos"] %}
                             <li id="task-{{ todo.id }}" data-id="{{ todo.id }}" class="list-group-item d-flex justify-content-between" onclick="showDetails(this)">
                                 <div class="task">
                                     <div class="form-check">
@@ -73,64 +73,64 @@
 
             </div>
             <div class="col-5">
-                {% if g.selectedTab != g.TabEnum.NONE %}
+                {% if session["selectedTab"] != session["TabEnum"].NONE %}
                 <ul class="nav nav-tabs">
                     <li class="nav-item">
-                        <a id="details-tab" class="nav-link" aria-current="page" href="{{ url_for('details', id=g.todo.id) }}">Details</a>
+                        <a id="details-tab" class="nav-link" aria-current="page" href="{{ url_for('details', id=session['todo'].id) }}">Details</a>
                       </li>
                     <li class="nav-item">
-                      <a id="edit-tab" class="nav-link" href="{{ url_for('edit', id=g.todo.id) }}">Edit</a>
+                      <a id="edit-tab" class="nav-link" href="{{ url_for('edit', id=session['todo'].id) }}">Edit</a>
                     </li>
                     <li class="nav-item">
-                        <a id="recommendations-tab" class="nav-link" href="{{ url_for('recommend', id=g.todo.id) }}">
+                        <a id="recommendations-tab" class="nav-link" href="{{ url_for('recommend', id=session['todo'].id) }}">
                             <span id="recommendation-spinner" class="spinner-border spinner-border-sm" role="status" aria-hidden="true" hidden></span>
                             Recommendations
                         </a>
                     </li>                  </ul>
                 {% endif %}
 
-                {% if g.todo != None and g.selectedTab == g.TabEnum.RECOMMENDATIONS %}       
+                {% if session["todo"] != None and session["selectedTab"] == session["TabEnum"].RECOMMENDATIONS %}       
                 <div id="recommendations-div" class="card">                     
                     <div class="card-body">
                         <div class="list-group" id="list-of-recommendations">
-                            {% for recommend in g.todo.recommendations %}
+                            {% for recommend in session["todo"].recommendations %}
                             <a href="{{ recommend.link }}" class="list-group-item list-group-item-action"> {{ recommend.title }} </a>
                             {% endfor %}
                           </div>
                           <br />
                           Don't like recommendations? 
-                          <a href="{{ url_for('recommend', id=g.todo.id, refresh=true) }}" class="btn btn-info btn-fixed-width" onclick="handleRefresh()"> Refresh </a>
+                          <a href="{{ url_for('recommend', id=session['todo'].id, refresh=true) }}" class="btn btn-info btn-fixed-width" onclick="handleRefresh()"> Refresh </a>
                         </div>
                     </div>
                 </div>
                 {% endif %}
-                {% if g.todo != None and g.selectedTab == g.TabEnum.DETAILS %}
+                {% if session["todo"] != None and session["selectedTab"] == session["TabEnum"].DETAILS %}
                 <div id="details-div" class="card">
                     <div class="card-body">
-                        <p><strong>Task:</strong> {{ g.todo.name }}</p>
-                        <p><strong>Priority: </strong> {{ g.todo.priority_str() }}</p>
-                        <p><strong>Due Date:</strong> {{ g.todo.due_date }} </p> 
-                        <p><strong>Additional Notes:</strong> {{ g.todo.notes }}</p>
-                        <p><strong>Completed:</strong> {{ g.todo.completed_str() }}</p>
-                        <p><strong>Due Date:</strong> {{ g.todo.due_date }} </p> 
-                        <p><strong>Additional Notes:</strong> {{ g.todo.notes }}</p>
-                        <p><strong>Completed:</strong> {{ g.todo.completed_str() }}</p>
+                        <p><strong>Task:</strong> {{ session["todo"].name }}</p>
+                        <p><strong>Priority: </strong> {{ session["todo"].priority_str() }}</p>
+                        <p><strong>Due Date:</strong> {{ session["todo"].due_date }} </p> 
+                        <p><strong>Additional Notes:</strong> {{ session["todo"].notes }}</p>
+                        <p><strong>Completed:</strong> {{ session["todo"].completed_str() }}</p>
+                        <p><strong>Due Date:</strong> {{ session["todo"].due_date }} </p> 
+                        <p><strong>Additional Notes:</strong> {{ session["todo"].notes }}</p>
+                        <p><strong>Completed:</strong> {{ session["todo"].completed_str() }}</p>
                     </div>
                 </div>
                 {% endif %}
-                {% if g.todo != None and g.selectedTab == g.TabEnum.EDIT %}               
+                {% if session["todo"] != None and session["selectedTab"] == session["TabEnum"].EDIT %}               
                 <div id="edit-div" class="card">
                     <div class="card-body">
-                        <form action="{{ url_for('update_todo', id=g.todo.id) }}" method="post">
-                            <input type="hidden" name="id" value="{{g.todo.id}}">
+                        <form action="{{ url_for('update_todo', id=session['todo'].id) }}" method="post">
+                            <input type="hidden" name="id" value="{{session['todo'].id}}">
                             <div class="form-group">
                                 <label for="name">Name:</label>
-                                <input type="text" id="name" name="name" value="{{g.todo.name}}" class="form-control">
+                                <input type="text" id="name" name="name" value="{{session['todo'].name}}" class="form-control">
                             </div>
                             <br/>
                             <div>
                                 <p>Priority:</p>
-                                {% if g.todo != None and g.todo.priority == 1 %} <!--PriorityEnum.HIGH-->
+                                {% if session["todo"] != None and session["todo"].priority == 1 %} <!--PriorityEnum.HIGH-->
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="priority" id="inlinePriority1" value="1" checked>
                                     <label class="form-check-label" for="inlinePriority1">High</label>
@@ -141,7 +141,7 @@
                                     <label class="form-check-label" for="inlinePriority1">High</label>
                                 </div>
                                 {% endif %}
-                                {%if g.todo != None and g.todo.priority == 2 %} <!--PriorityEnum.MEDIUM-->
+                                {%if session["todo"] != None and session["todo"].priority == 2 %} <!--PriorityEnum.MEDIUM-->
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="priority" id="inlinePriority2" value="2" checked>
                                     <label class="form-check-label" for="inlinePriority2">Medium</label>
@@ -152,7 +152,7 @@
                                     <label class="form-check-label" for="inlinePriority2">Medium</label>
                                 </div>
                                 {% endif %}
-                                {%if g.todo != None and g.todo.priority == 3 %} <!--PriorityEnum.LOW-->
+                                {%if session["todo"] != None and session["todo"].priority == 3 %} <!--PriorityEnum.LOW-->
                                 <div class="form-check form-check-inline">
                                     <input class="form-check-input" type="radio" name="priority" id="inlinePriority3" value="3" checked>
                                     <label class="form-check-label" for="inlinePriority3">Low</label>
@@ -167,16 +167,16 @@
                             <br/>
                             <div class="form-group">
                                 <label for="duedate">Due Date:</label>
-                                <input type="date" id="duedate" name="duedate" value="{{g.todo.due_date}}" class="form-control">
+                                <input type="date" id="duedate" name="duedate" value="{{session['todo'].due_date}}" class="form-control">
                             </div>
                             <br />
                             <div class="form-group">
                                 <label for="notes">Description:</label>
-                                <textarea id="notes" name="notes" rows="4" placeholder="additional details?" class="form-control">{{g.todo.notes}}</textarea>
+                                <textarea id="notes" name="notes" rows="4" placeholder="additional details?" class="form-control">{{session["todo"].notes}}</textarea>
                             </div>
                             <br />
                             <div class="form-check form-switch">
-                                {% if g.todo.completed %} 
+                                {% if session["todo"].completed %} 
                                     <input type="checkbox" id="completed" name="completed" role="switch" checked class="form-check-input">
                                     <label for="completed" class="form-check-label">Completed</label>
                                 {% else %}
@@ -185,7 +185,7 @@
                                 {% endif %}
                             </div>
                             <br />
-                            <button type="submit" class="btn btn-primary" formaction="{{ url_for('update_todo', id=g.todo.id) }}" formmethod="POST">Update</button>
+                            <button type="submit" class="btn btn-primary" formaction="{{ url_for('update_todo', id=session['todo'].id) }}" formmethod="POST">Update</button>
                             <button type="submit" class="btn btn-secondary" formaction="{{ url_for('index') }}" formmethod="GET">Cancel</button>
                         </form>
                     </div>
