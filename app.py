@@ -115,7 +115,6 @@ print('Database Initialized')
 
 @app.before_request
 def load_data_to_g():
-    # todos = Todo.query.all()
     todos = Todo.query.filter_by(oid=session.get("oid")).all()
     print("Loading data for OID: ", session.get("oid"))
     g.todos = todos 
@@ -130,7 +129,8 @@ def index():
         return redirect(url_for("login"))
     else:
         session["oid"] = auth.get_user().get("oid")
-        return render_template("index.html", user=auth.get_user())  
+        session["name"] = auth.get_user().get("name")
+        return render_template("index.html")  
 
 @app.route("/add", methods=["POST"])
 def add_todo():
@@ -152,24 +152,44 @@ def add_todo():
 # Details of ToDo Item
 @app.route('/details/<int:id>', methods=['GET'])
 def details(id):
+
+    if not auth.get_user():
+        return redirect(url_for("login"))
+    
+    todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+    if todo is None:
+        return redirect(url_for('index'))
+    
     g.selectedTab = Tab.DETAILS
-    g.todos = Todo.query.all()
-    g.todo = Todo.query.filter_by(id=id).first()
+    g.todos = Todo.query.filter_by(oid=session.get("oid")).all()
+    g.todo = todo
     
     return render_template('index.html')
 
 # Edit a new ToDo
 @app.route('/edit/<int:id>', methods=['GET'])
 def edit(id):
+
+    if not auth.get_user():
+        return redirect(url_for("login"))
+    
+    todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+    if todo is None:
+        return redirect(url_for('index'))
+
     g.selectedTab = Tab.EDIT
-    g.todos = Todo.query.all()
-    g.todo = Todo.query.filter_by(id=id).first()
+    g.todos = Todo.query.filter_by(oid=session.get("oid")).all()
+    g.todo = todo
 
     return render_template('index.html')
 
 # Save existing To Do Item
 @app.route('/update/<int:id>', methods=['POST'])
 def update_todo(id):
+
+    if not auth.get_user():
+        return redirect(url_for("login"))
+
     g.selectedTab = Tab.DETAILS
 
     if request.form.get('cancel') != None:
@@ -182,7 +202,7 @@ def update_todo(id):
     priority=request.form.get('priority')
     completed=request.form.get('completed')
 
-    todo = db.session.query(Todo).filter_by(id=id).first()
+    todo = db.session.query(Todo).filter_by(id=id,oid=session.get("oid")).first()
     if todo != None:
         todo.name = name
 
@@ -209,18 +229,31 @@ def update_todo(id):
 # Delete a ToDo
 @app.route('/remove/<int:id>', methods=["POST", "GET"])
 def remove_todo(id):
+
+    if not auth.get_user():
+        return redirect(url_for("login"))
+    
+    todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+    if todo is None:
+        return redirect(url_for('index'))
+
     g.selectedTab = Tab.NONE
-    db.session.delete(Todo.query.filter_by(id=id).first())
+    db.session.delete(todo)
     db.session.commit()
+
     return redirect(url_for('index'))
 
 # Show AI recommendations
 @app.route('/recommend/<int:id>', methods=['GET'])
 @app.route('/recommend/<int:id>/<refresh>', methods=['GET'])
 async def recommend(id, refresh=False):
+
+    if not auth.get_user():
+        return redirect(url_for("login"))
+
     g.selectedTab = Tab.RECOMMENDATIONS
     recommendation_engine = RecommendationEngine()
-    g.todo = db.session.query(Todo).filter_by(id=id).first()
+    g.todo = db.session.query(Todo).filter_by(id=id,oid=session.get("oid")).first()
 
     if g.todo and not refresh:
         try:
@@ -254,8 +287,13 @@ async def recommend(id, refresh=False):
 
 @app.route('/completed/<int:id>/<complete>', methods=['GET'])
 def completed(id, complete):
+
+    if not auth.get_user():
+        return redirect(url_for("login"))
+
     g.selectedTab = Tab.NONE
-    g.todo = Todo.query.filter_by(id=id).first()
+    g.todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+    
     if (g.todo != None and complete == "true"):
         g.todo.completed = True
     elif (g.todo != None and complete == "false"):
@@ -280,7 +318,6 @@ def auth_response():
     if "error" in result:
         return render_template("auth_error.html", result=result)
     return redirect(url_for("index"))
-
 
 @app.route("/logout")
 def logout():
