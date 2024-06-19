@@ -173,3 +173,16 @@ resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
     }
   }
 }
+
+resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
+  name: keyVaultName
+}
+
+resource redirecturi 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+  parent: keyVault
+  name: 'REDIRECT-URI'
+  properties: {
+    value: 'https://${containerApp.properties.configuration.ingress.fqdn}/getAToken'
+    contentType: 'text/plain'
+  }
+}

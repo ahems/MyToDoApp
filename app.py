@@ -47,6 +47,7 @@ if AZURE_CLIENT_ID:
     CLIENTID=client.get_secret("CLIENTID").value;
     CLIENTSECRET=client.get_secret("CLIENTSECRET").value;
     REDIS_CONNECTION_STRING=client.get_secret("REDIS-CONNECTION-STRING").value;
+    redirect_uri = client.get_secret("REDIRECT-URI").value;
 else:
     sql_user_name = os.environ.get("AZURE_SQL_USER");
     sql_password = os.environ.get("AZURE_SQL_PASSWORD");
@@ -304,9 +305,13 @@ def completed(id, complete):
 
 @app.route("/login")
 def login():
+
+    if IS_LOCALHOST:
+        redirect_uri =url_for("auth_response", _external=True)
+
     return render_template("login.html", **auth.log_in(
         scopes=["User.Read"], # Have user consent to scopes during log-in
-        redirect_uri=url_for("auth_response", _external=True), # Optional. If present, this absolute URL must match your app's redirect_uri registered in Azure Portal
+        redirect_uri=redirect_uri, # Optional. If present, this absolute URL must match your app's redirect_uri registered in Azure Portal
         prompt="select_account",  # Optional. More values defined in  https://openid.net/specs/openid-connect-core-1_0.html#AuthRequest
         ))
 
