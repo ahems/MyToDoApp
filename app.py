@@ -1,5 +1,6 @@
 import os
 import json
+from re import S
 import identity.web
 import redis
 import secrets
@@ -328,6 +329,13 @@ def auth_response():
 
 @app.route("/logout")
 def logout():
+
+    # Clear session variables
+    session.pop('oid', None)
+    session.pop('name', None)
+    session.pop('todos', None)
+    session.pop('todo', None)
+
     return redirect(auth.log_out(url_for("index", _external=True)))
 
 if __name__ == "__main__":
