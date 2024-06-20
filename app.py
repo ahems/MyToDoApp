@@ -307,7 +307,10 @@ def completed(id, complete):
 def login():
 
     if IS_LOCALHOST:
-        redirect_uri =url_for("auth_response", _external=True)
+        redirect_uri=url_for("auth_response", _external=True)
+        print(f"Localhost redirect_uri: {redirect_uri}")
+    else:
+        print(f"Redirect URI: {redirect_uri}")
 
     return render_template("login.html", **auth.log_in(
         scopes=["User.Read"], # Have user consent to scopes during log-in
