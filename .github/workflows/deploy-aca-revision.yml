@@ -39,7 +39,7 @@ jobs:
     - name: Create Random Name for Revision
       run: | 
       
-          echo 'REVISION='$(uuidgen) | sed 's/-//g' | cut -c 1-8 >> $GITHUB_ENV
+          echo -l 'REVISION='$(uuidgen) | sed 's/-//g' | cut -c 1-8 >> $GITHUB_ENV
 
     - name: Deploy ACA Revision
       if: ${{ env.AZURE_SUBSCRIPTION_ID != '' }}
