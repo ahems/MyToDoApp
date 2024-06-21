@@ -46,7 +46,7 @@ jobs:
       uses: azure/arm-deploy@v1
       with:
         deploymentName: 'Deploy-ACA-Revision-${{ env.REVISION }}'
-        scope: subscription
+        scope: resourcegroup
         region: ${{ env.DEPLOYMENT_LOCATION }}
         subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
         resourceGroupName: ${{ env.RESOURCE_GROUP }}
