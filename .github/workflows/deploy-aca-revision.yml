@@ -44,7 +44,7 @@ jobs:
           echo 'ACR_NAME='$ACR_NAME >> $GITHUB_ENV
           TAG="$(az acr repository show-tags --name $ACR_NAME --repository ${{ env.REPO_NAME }} --orderby time_desc --top 1 -o tsv)"
           echo 'TAG='$TAG >> $GITHUB_ENV
-          ACA_NAME="$(containerapp list --resource-group ${{ env.RESOURCE_GROUP }} --query "[].{Name:name}" -o tsv)"
+          ACA_NAME="$(az containerapp list --resource-group ${{ env.RESOURCE_GROUP }} --query "[].{Name:name}" -o tsv)"
           echo 'ACA_NAME='$ACA_NAME >> $GITHUB_ENV
             
     - name: Checkout IaC Templates
