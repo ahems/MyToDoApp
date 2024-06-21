@@ -4,14 +4,17 @@ permissions:
   contents: read  # This is required for actions/checkout
 
 on:
-    repository_dispatch:
-      types: [pushed-to-acr]
+    workflow_run:
+      workflows: [Build and Push Docker Image to ACR]
+      types:
+        - completed
     workflow_dispatch:
 
 env:
   BICEP_ROOT_PATH: infra/modules/
   DEPLOYMENT_LOCATION: eastus
   RESOURCE_GROUP: My-ToDo-App
+  REPO_NAME: mytodoapp
   AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
   AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
@@ -30,30 +33,34 @@ jobs:
         client-id: ${{ env.AZURE_CLIENT_ID }}
         tenant-id: ${{ env.AZURE_TENANT_ID }}
         subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
-        
+    
+    - name: Find Existing Azure Resources
+      uses: Azure/CLI@v1
+      with:
+        azcliversion: latest
+        inlineScript: |
+          
+          ACR_NAME="$(az acr list --resource-group ${{ env.RESOURCE_GROUP }} --query [0].name -o tsv)"
+          echo 'ACR_NAME='$ACR_NAME >> $GITHUB_ENV
+          TAG="$(az acr repository show-tags --name $ACR_NAME --repository ${{ env.REPO_NAME }} --orderby time_desc --top 1 -o tsv)"
+          echo 'TAG='$TAG >> $GITHUB_ENV
+          ACA_NAME="$(containerapp list --resource-group ${{ env.RESOURCE_GROUP }} --query "[].{Name:name}" -o tsv)"
+          echo 'ACA_NAME='$ACA_NAME >> $GITHUB_ENV
+            
     - name: Checkout IaC Templates
       uses: actions/checkout@main
 
-    - name: Set Revision Name
-      run: |
-      
-          if [[ -n "${{ github.event.client_payload.imagetag }}" ]]; then
-            echo 'REVISION='${{ github.event.client_payload.imagetag }} >> $GITHUB_ENV
-          else      
-            echo 'REVISION='$(uuidgen) | sed 's/-//g' | cut -c 1-17 >> $GITHUB_ENV
-          fi
-
     - name: Deploy ACA Revision
-      if: ${{ env.AZURE_SUBSCRIPTION_ID != '' }}
+      if: ${{ env.ACA_NAME != '' }}
       uses: azure/arm-deploy@v1
       with:
-        deploymentName: 'Deploy-ACA-Revision-${{ env.REVISION }}'
+        deploymentName: 'Deploy-ACA-Revision-${{ env.TAG }}'
         scope: resourcegroup
         region: ${{ env.DEPLOYMENT_LOCATION }}
         subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
         resourceGroupName: ${{ env.RESOURCE_GROUP }}
         template: ${{ env.BICEP_ROOT_PATH }}aca-revision.bicep
-        parameters: revisionSuffix=${{ env.REVISION }}
+        parameters: revisionSuffix=${{ env.TAG }}, acaName=${{ env.ACA_NAME }}, imageNameAndVersion=${{ env.REPO_NAME }}:${{ env.TAG }}
         failOnStdErr: true
 
     - name: Logout of Azure
