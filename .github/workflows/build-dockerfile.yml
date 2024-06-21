@@ -9,8 +9,14 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+    
     - name: Checkout code
       uses: actions/checkout@v2
+
+    - name: Create Random image tag
+      run: | 
+      
+          echo 'TAG='$(uuidgen) | sed 's/-//g' | cut -c 1-17 >> $GITHUB_ENV     
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -27,5 +33,5 @@ jobs:
       with:
         context: .
         push: true
-        tags: ${{ secrets.ACR_NAME }}/mytodoapp:latest
+        tags: ${{ secrets.ACR_NAME }}/mytodoapp:${{ env.TAG }}
         file: Dockerfile
