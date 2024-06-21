@@ -4,10 +4,8 @@ permissions:
   contents: read  # This is required for actions/checkout
 
 on:
-    workflow_run:
-      workflows: [Build and Push Docker Image to ACR]
-      types:
-        - completed
+    repository_dispatch:
+      types: [pushed-to-acr]
     workflow_dispatch:
 
 env:
@@ -36,10 +34,14 @@ jobs:
     - name: Checkout IaC Templates
       uses: actions/checkout@main
 
-    - name: Create Random Name for Revision
-      run: | 
+    - name: Set Revision Name
+      run: |
       
-          echo 'REVISION='$(uuidgen) | sed 's/-//g' | cut -c 1-17 >> $GITHUB_ENV
+          if [[ -n "${{ github.event.client_payload.imagetag }}" ]]; then
+            echo 'REVISION='${{ github.event.client_payload.imagetag }} >> $GITHUB_ENV
+          else      
+            echo 'REVISION='$(uuidgen) | sed 's/-//g' | cut -c 1-17 >> $GITHUB_ENV
+          fi
 
     - name: Deploy ACA Revision
       if: ${{ env.AZURE_SUBSCRIPTION_ID != '' }}
