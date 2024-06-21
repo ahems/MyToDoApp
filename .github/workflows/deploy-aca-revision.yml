@@ -39,13 +39,13 @@ jobs:
     - name: Create Random Name for Revision
       run: | 
       
-          echo 'revisionSuffix='$(uuidgen) | sed 's/-//g' | cut -c 1-8 >> $GITHUB_ENV
+          echo 'REVISION='$(uuidgen) | sed 's/-//g' | cut -c 1-8 >> $GITHUB_ENV
 
     - name: Deploy ACA Revision
       if: ${{ env.AZURE_SUBSCRIPTION_ID != '' }}
       uses: azure/arm-deploy@v1
       with:
-        deploymentName: 'Deploy-ACA-Revision-${{ env.revisionSuffix }}'
+        deploymentName: 'Deploy-ACA-Revision-${{ env.REVISION }}'
         scope: subscription
         region: ${{ env.DEPLOYMENT_LOCATION }}
         subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
