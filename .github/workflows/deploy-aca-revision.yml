@@ -39,7 +39,7 @@ jobs:
     - name: Create Random Name for Revision
       run: | 
       
-          echo -l 'REVISION='$(uuidgen) | sed 's/-//g' | cut -c 1-8 >> $GITHUB_ENV
+          echo 'REVISION='$(uuidgen) | sed 's/-//g' | cut -c 1-17 >> $GITHUB_ENV
 
     - name: Deploy ACA Revision
       if: ${{ env.AZURE_SUBSCRIPTION_ID != '' }}
@@ -51,7 +51,7 @@ jobs:
         subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
         resourceGroupName: ${{ env.RESOURCE_GROUP }}
         template: ${{ env.BICEP_ROOT_PATH }}aca-revision.bicep
-        parameters: revisionSuffix=${{ env.revisionSuffix }}
+        parameters: revisionSuffix=${{ env.REVISION }}
         failOnStdErr: true
 
     - name: Logout of Azure
