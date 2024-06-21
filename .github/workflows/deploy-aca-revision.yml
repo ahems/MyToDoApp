@@ -60,7 +60,7 @@ jobs:
         subscriptionId: ${{ env.AZURE_SUBSCRIPTION_ID }}
         resourceGroupName: ${{ env.RESOURCE_GROUP }}
         template: ${{ env.BICEP_ROOT_PATH }}aca-revision.bicep
-        parameters: revisionSuffix=${{ env.TAG }}, acaName=${{ env.ACA_NAME }}, imageNameAndVersion=${{ env.REPO_NAME }}:${{ env.TAG }}
+        parameters: revisionSuffix=${{ env.TAG }} acaName=${{ env.ACA_NAME }} imageNameAndVersion=${{ env.REPO_NAME }}:${{ env.TAG }}
         failOnStdErr: true
 
     - name: Logout of Azure
