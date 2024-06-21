@@ -4,6 +4,9 @@ on:
   push:
   workflow_dispatch:
 
+env:
+  REPO_NAME: mytodoapp
+  
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -33,5 +36,5 @@ jobs:
       with:
         context: .
         push: true
-        tags: ${{ secrets.ACR_NAME }}/mytodoapp:${{ env.TAG }}
+        tags: ${{ secrets.ACR_NAME }}/${{ env.REPO_NAME }}:${{ env.TAG }}
         file: Dockerfile
