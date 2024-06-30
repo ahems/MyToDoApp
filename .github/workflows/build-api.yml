@@ -1,0 +1,78 @@
+name: Build And Push API
+permissions:
+  id-token: write # This is required for requesting the JWT
+  contents: read  # This is required for actions/checkout
+
+on:
+    workflow_dispatch:
+
+env:
+  DEPLOYMENT_LOCATION: eastus
+  RESOURCE_GROUP: My-ToDo-App
+  AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+  AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+  AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+  REPO_NAME: mytodoapi
+  
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Create Random image tag
+      run: | 
+      
+          echo 'TAG='$(uuidgen) | sed 's/-//g' | cut -c 1-17 >> $GITHUB_ENV     
+
+    - name: Azure Login
+      uses: Azure/login@v1
+      if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != ''}}
+      with:
+        client-id: ${{ env.AZURE_CLIENT_ID }}
+        tenant-id: ${{ env.AZURE_TENANT_ID }}
+        subscription-id: ${{ env.AZURE_SUBSCRIPTION_ID }}
+        
+    - name: Set Variables
+      uses: Azure/CLI@v1
+      with:
+        azcliversion: latest
+        inlineScript: |
+
+            KEYVAULT_NAME="$(az keyvault list --resource-group ${{ env.RESOURCE_GROUP }} --query [0].name -o tsv)"
+            echo 'KEYVAULT_NAME='$KEYVAULT_NAME >> $GITHUB_ENV
+
+            AZURESQLPASSWORD="$(az keyvault secret show --name AzureSqlPassword --vault-name $KEYVAULT_NAME --query value -o tsv)"
+            AZURESQLSERVER="$(az keyvault secret show --name AzureSqlServer --vault-name $KEYVAULT_NAME --query value -o tsv)"
+            AZURESQLPORT="$(az keyvault secret show --name AzureSqlPort --vault-name $KEYVAULT_NAME --query value -o tsv)"
+            AZURESQLUSER="$(az keyvault secret show --name AzureSqlUser --vault-name $KEYVAULT_NAME --query value -o tsv)"
+            DATABASE_CONNECTION_STRING='Server=tcp:$AZURESQLSERVER,$AZURESQLPORT;Initial Catalog=todo;Persist Security Info=False;User ID=$AZURESQLUSER;Password=$AZURESQLPASSWORD;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+            echo 'DATABASE_CONNECTION_STRING='$DATABASE_CONNECTION_STRING >> $GITHUB_ENV
+
+            ACR_REGISTRY="$(az acr list --resource-group ${{ env.RESOURCE_GROUP }} --query [0].name -o tsv)"
+            echo 'ACR_REGISTRY='$ACR_REGISTRY >> $GITHUB_ENV
+            ACR_USERNAME="$(az acr credential show --name $ACR_REGISTRY --query username -o tsv)"
+            echo 'ACR_USERNAME='$ACR_USERNAME >> $GITHUB_ENV
+            ACR_PASSWORD="$(az acr credential show --name $ACR_REGISTRY --query passwords[0].value -o tsv)"
+            echo 'ACR_PASSWORD='$ACR_PASSWORD >> $GITHUB_ENV
+
+    - name: Login to ACR
+      uses: azure/docker-login@v2
+      with:
+        login-server: ${{ env.ACR_REGISTRY }}
+        username: ${{ env.ACR_USERNAME }}
+        password: ${{ env.ACR_PASSWORD }}
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+  
+    - name: Build and push
+      uses: docker/build-push-action@v2
+      with:
+        secrets: DATABASE_CONNECTION_STRING=${{ env.DATABASE_CONNECTION_STRING }}
+        push: true
+        tags: ${{ env.ACR_NAME }}/${{ env.REPO_NAME }}:${{ env.TAG }}
+        file: api/Dockerfile
