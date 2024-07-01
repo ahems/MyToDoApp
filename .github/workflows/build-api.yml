@@ -74,5 +74,5 @@ jobs:
       with:
         secrets: DATABASE_CONNECTION_STRING=${{ env.DATABASE_CONNECTION_STRING }}
         push: true
-        tags: ${{ env.ACR_NAME }}/${{ env.REPO_NAME }}:${{ env.TAG }}
+        tags: ${{ env.ACR_REGISTRY }}/${{ env.REPO_NAME }}:${{ env.TAG }}
         file: api/Dockerfile
