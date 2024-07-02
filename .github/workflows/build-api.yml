@@ -62,7 +62,7 @@ jobs:
     - name: Login to ACR
       uses: azure/docker-login@v2
       with:
-        login-server: ${{ env.ACR_REGISTRY }}
+        login-server: ${{ env.ACR_REGISTRY }}.azurecr.io
         username: ${{ env.ACR_USERNAME }}
         password: ${{ env.ACR_PASSWORD }}
 
