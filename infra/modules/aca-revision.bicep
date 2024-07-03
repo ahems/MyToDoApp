@@ -1,6 +1,6 @@
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
-param acaName string = 'todoapp-aca-${uniqueString(resourceGroup().id)}'
+param appName string = 'todoapp-app-${uniqueString(resourceGroup().id)}'
 param containerAppEnvName string = 'todoapp-env-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
 param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
@@ -33,7 +33,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' existing = {
 }
 
 resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
-  name: acaName
+  name: appName
   location: location
   identity: {
     type: 'UserAssigned'
@@ -66,7 +66,7 @@ resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
       revisionSuffix: revisionSuffix
       containers: [
         {
-          name: acaName
+          name: appName
           image: image
           resources: {
             cpu: json('.25')

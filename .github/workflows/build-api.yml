@@ -23,11 +23,6 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v2
 
-    - name: Create Random image tag
-      run: | 
-      
-          echo 'TAG='$(uuidgen) | sed 's/-//g' | cut -c 1-17 >> $GITHUB_ENV     
-
     - name: Azure Login
       uses: Azure/login@v1
       if: ${{ env.AZURE_CLIENT_ID != '' && env.AZURE_TENANT_ID != '' && env.AZURE_SUBSCRIPTION_ID != ''}}
@@ -38,6 +33,7 @@ jobs:
         
     - name: Set Variables
       uses: Azure/CLI@v1
+      continue-on-error: true
       with:
         azcliversion: latest
         inlineScript: |
@@ -58,6 +54,22 @@ jobs:
             echo 'ACR_USERNAME='$ACR_USERNAME >> $GITHUB_ENV
             ACR_PASSWORD="$(az acr credential show --name $ACR_REGISTRY --query passwords[0].value -o tsv)"
             echo 'ACR_PASSWORD='$ACR_PASSWORD >> $GITHUB_ENV
+
+    - name: Get Or Create Image Tag
+      uses: Azure/CLI@v1
+      continue-on-error: true
+      with:
+        azcliversion: latest
+        inlineScript: |
+        
+            TAG="$(az acr repository show-tags --name ${{ env.ACR_REGISTRY }} --repository ${{ env.REPO_NAME }} --orderby time_desc --query [0] -o tsv)"
+            if [ -z "$TAG" ]; then
+                TAG='latest'
+            else
+                TAG=$(uuidgen) | sed 's/-//g' | cut -c 1-17
+            fi
+            
+            echo 'TAG='$TAG >> $GITHUB_ENV
 
     - name: Login to ACR
       uses: azure/docker-login@v2

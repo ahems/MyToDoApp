@@ -2,12 +2,14 @@ param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param openAiName string = 'todoapp-openai-${uniqueString(resourceGroup().id)}'
 param sqlServerName string = 'todoapp-sql-${uniqueString(resourceGroup().id)}'
 param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
-param acaName string = 'todoapp-aca-${uniqueString(resourceGroup().id)}'
+param appName string = 'todoapp-app-${uniqueString(resourceGroup().id)}'
+param apiName string = 'todoapp-api-${uniqueString(resourceGroup().id)}'
 param containerAppEnvName string = 'todoapp-env-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
 param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
-param imageNameAndVersion string = 'mytodoapp:latest'
+param appImageNameAndVersion string = 'mytodoapp:latest'
+param apiImageNameAndVersion string = 'mytodoapi:latest'
 param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
 param openAiDeploymentName string = 'chat'
 param azureSqlPort string = '1433'
@@ -34,11 +36,13 @@ module aca  'modules/aca.bicep' = {
     openAiName: openAiName
     sqlServerName:sqlServerName
     appInsightsName:appInsightsName
-    acaName:acaName
+    appName:appName
+    apiName:apiName
     containerAppEnvName:containerAppEnvName
     containerRegistryName:containerRegistryName
     identityName:identityName
-    imageNameAndVersion:imageNameAndVersion
+    appImageNameAndVersion:appImageNameAndVersion
+    apiImageNameAndVersion:apiImageNameAndVersion
     workspaceName:workspaceName
     openAiDeploymentName: openAiDeploymentName
     minReplica:minReplica
