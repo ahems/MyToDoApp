@@ -13,6 +13,7 @@ env:
   AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
   AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
   REPO_NAME: mytodoapi
+  TAG: latest
   
 jobs:
   build:
@@ -55,7 +56,7 @@ jobs:
             ACR_PASSWORD="$(az acr credential show --name $ACR_REGISTRY --query passwords[0].value -o tsv)"
             echo 'ACR_PASSWORD='$ACR_PASSWORD >> $GITHUB_ENV
 
-    - name: Get Or Create Image Tag
+    - name: Create Image Tag
       uses: Azure/CLI@v1
       continue-on-error: true
       with:
@@ -63,13 +64,11 @@ jobs:
         inlineScript: |
         
             TAG="$(az acr repository show-tags --name ${{ env.ACR_REGISTRY }} --repository ${{ env.REPO_NAME }} --orderby time_desc --query [0] -o tsv)"
-            if [ -z "$TAG" ]; then
-                TAG='latest'
-            else
+
+            if [[ "$TAG" == "latest" ]]; then
                 TAG=$(uuidgen) | sed 's/-//g' | cut -c 1-17
+                echo 'TAG='$TAG >> $GITHUB_ENV
             fi
-            
-            echo 'TAG='$TAG >> $GITHUB_ENV
 
     - name: Login to ACR
       uses: azure/docker-login@v2
