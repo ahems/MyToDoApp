@@ -2,10 +2,18 @@ param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
 param location string = resourceGroup().location
 param sqlAdminUsername string = uniqueString(newGuid())
+param aadAdminLogin string
+param aadAdminObjectId string
+param tenantId string = subscription().tenantId
 @secure()
 param sqlAdminPassword string = newGuid()
+param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 
 var sqlDatabaseName = 'todo'
+
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
+  name: identityName
+}
 
 resource sqlServer 'Microsoft.Sql/servers@2021-02-01-preview' = {
   name: sqlServerName
@@ -13,6 +21,9 @@ resource sqlServer 'Microsoft.Sql/servers@2021-02-01-preview' = {
   properties: {
     administratorLogin: sqlAdminUsername
     administratorLoginPassword: sqlAdminPassword
+    version: '12.0'
+    minimalTlsVersion: '1.2'
+    publicNetworkAccess: 'Enabled'
   }
 }
 
@@ -22,6 +33,17 @@ resource sqlServerFirewallRule 'Microsoft.Sql/servers/firewallRules@2021-02-01-p
   properties: {
     startIpAddress: '0.0.0.0'
     endIpAddress: '255.255.255.255'
+  }
+}
+
+resource sqlServerAdmin 'Microsoft.Sql/servers/administrators@2021-02-01-preview' = {
+  parent: sqlServer
+  name: 'ActiveDirectory'
+  properties: {
+    administratorType: 'ActiveDirectory'
+    login: aadAdminLogin
+    sid: aadAdminObjectId
+    tenantId: tenantId
   }
 }
 
@@ -55,6 +77,7 @@ resource admin 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
     value: sqlAdminUsername
     contentType: 'text/plain'
   }
+  dependsOn: [sqlServer]
 }
 
 resource password 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
@@ -64,15 +87,17 @@ resource password 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
     value: sqlAdminPassword
     contentType: 'text/plain'
   }
+  dependsOn: [sqlServer]
 }
 
 resource server 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   parent: keyVault
   name: 'AZURESQLSERVER'
   properties: {
-    value: '${sqlServerName}.database.windows.net'
+    value: '${sqlServerName}${environment().suffixes.sqlServerHostname}'
     contentType: 'text/plain'
   }
+  dependsOn: [sqlServer]
 }
 
 resource port 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
@@ -80,6 +105,16 @@ resource port 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   name: 'AZURESQLPORT'
   properties: {
     value: '1433'
+    contentType: 'text/plain'
+  }
+  dependsOn: [sqlServer]
+}
+
+resource connectionString 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+  parent: keyVault
+  name: 'DATABASE-CONNECTION-STRING'
+  properties: {
+    value: 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},1433;Initial Catalog=${sqlDatabaseName};Authentication=Active Directory Default;User Id=${azidentity.properties.clientId}'
     contentType: 'text/plain'
   }
 }

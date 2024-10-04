@@ -1,4 +1,50 @@
-# Deployment via GitHub Actions using OpenID Connect and Bicep (IaC)
+# Deploying the ToDo App To Azure
+
+## Option 1 - Deployment from Visual Studio Code
+
+We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Follow these steps:
+
+* Clone the code from this [repository](https://github.com/ahems/MyToDoApp) to your own repo
+* Create a PAT with Repo scope in your own repo and make a note of the secret value
+* Set these environment variables:
+  * gitAccessToken - use the value in the previous step
+  * repositoryUrl - use the URL of your cloned GitHub repo
+  * TENANT_ID - the GUID of the ID of your Entra ID tenant
+  * SUBSCRIPTION_ID - the GUID of the ID of your Azure Subscription
+  * RESOURCE_GROUP - the name of the Resource Group yuo will deploy to
+  * EMAIL - your email address or get it by running (az account list | ConvertFrom-Json).user[1].name
+  * OBJECT_ID - this is the ObjectID of your account in Entra ID. Get this value using: az ad user list --upn (az account list | ConvertFrom-Json).user[1].name) | ConvertFrom-Json).objectId
+* Download the code from your cloned repo to your local machine
+* (Optional) If your Azure subscription is new, run the "/scripts/Register-Resource-Providers.ps1" Powershell script from a Terminal in VS Code
+* Right-Click on the file "/infra/deploy.bicep" and select "Deploy Bicep File...". Select or create the Resource Group for the name you set the RESOURCE_GROUP variable and the "deploy.bicepparam" parameters file. Wait for it to complete.
+* Run the "/scripts/create-app-and-secret.ps1" Powershell script in a terminal in VS Code to create an App and Client Secret in your Entra ID tenant. Your deployed App will use to Authenticate users.
+* Right-Click on the file "/infra/deploy-authentication.bicep" and select "Deploy Bicep File...". Select your previous Resource Group, use the "deploy-authentication.bicepparams" parameters file to use your local environment variables to set values in the KeyVault created in the previous step.
+* Right-Click on the file "/infra/deploy-acr-build-tasks.bicep", select "Deploy Bicep File...". Select your previous Resource Group, the "/infra/deploy-acr-build-tasks.bicepparam" parameters file to create two tasks in your Azure Container Registry to build the apps and push them to the Container Registry.
+* Run the "/scripts/run-acr-build-task.ps1" Powershell script in a terminal in VS Code to manually kick off the tasks created in the previous step. This will pull down the source code from your cloned GitHub repo, build it and push it to the Container Registry.
+
+### Host in Web Apps
+
+* Right-Click on the file "/infra/deploy-webapps.bicep", select "Deploy Bicep File...". Select your previous Resource Group, no parameters file and wait for it to complete. This will deploy the two Web Apps and set all necessary App Settings using the values from your KeyVault. NOTE: You may need to go to "Deployment Center" of each of your web apps and select the identity in the "Identity" drop-down if it's not already populated in order for the web apps to successfully pull the docker images from your Container registry.
+
+### Host in Azure Container Apps
+
+* Right-Click on the file "/infra/deploy-aca.bicep", select "Deploy Bicep File...". Select your previous Resource Group, no parameters file and wait for it to complete. This will deploy the two Web Apps and set all necessary App Settings using the values from your KeyVault.
+
+### Configure Database
+
+The next step is to configure the Database, following these instructions [text](https://learn.microsoft.com/en-us/azure/app-service/tutorial-connect-msi-sql-database)
+
+* Log in to the database using [SQL Server Management Studio](https://learn.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms) and your email address.
+* Select the "ToDo" database, create a query and run this command tp grant the User Managed Identity Access to the database, replacing "todoapp-identity-jvmw6a2wit3yu" example below with the name of your Managed Identity:
+
+CREATE USER [todoapp-identity-jvmw6a2wit3yu] FROM EXTERNAL PROVIDER;
+
+ALTER ROLE db_datareader ADD MEMBER [todoapp-identity-jvmw6a2wit3yu];
+ALTER ROLE db_datawriter ADD MEMBER [todoapp-identity-jvmw6a2wit3yu];
+ALTER ROLE db_ddladmin ADD MEMBER [todoapp-identity-jvmw6a2wit3yu];
+GO
+
+## Option 2 - Deployment via GitHub Actions using OpenID Connect and Bicep (IaC)
 
 We can use GitHub Actions using OpenID Connect and Infrastructure-as-Code (IaC) using Bicep to deploy a new ACA revision when we build the code.
 

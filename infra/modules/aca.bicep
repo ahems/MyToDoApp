@@ -8,8 +8,8 @@ param containerAppEnvName string = 'todoapp-env-${uniqueString(resourceGroup().i
 param location string = resourceGroup().location
 param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
-param appImageNameAndVersion string = 'mytodoapp:latest'
-param apiImageNameAndVersion string = 'mytodoapi:latest'
+param appImageNameAndVersion string = 'todoapp:latest'
+param apiImageNameAndVersion string = 'todoapi:latest'
 param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
 param openAiDeploymentName string = 'gpt-35-turbo'
 param azureSqlPort string = '1433'
@@ -70,7 +70,7 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2022-06-01-preview' 
   }
 }
 
-var DATABASE_CONNECTION_STRING = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},${azureSqlPort};Initial Catalog=todoapp;Persist Security Info=False;User ID=${sqlServer.properties.administratorLogin};Password=${azuresqlpassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
+var DATABASE_CONNECTION_STRING = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},${azureSqlPort};Initial Catalog=todo;Persist Security Info=False;User ID=${sqlServer.properties.administratorLogin};Password=${azuresqlpassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 
 resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
   name: appName
@@ -159,6 +159,10 @@ resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
             }
+            {
+              name: 'API_URL'
+              value: 'https://${containerApi.properties.configuration.ingress.fqdn}/graphql/'
+            }
           ]
         }
       ]
@@ -176,7 +180,7 @@ resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
           }
         ]
       }
-    }
+    } 
   }
 }
 
@@ -200,7 +204,7 @@ resource containerApi 'Microsoft.App/containerApps@2022-06-01-preview' = {
       ]
       ingress: {
         external: true
-        targetPort: 80
+        targetPort: 5000
         allowInsecure: false
         traffic: [
           {
@@ -261,6 +265,15 @@ resource redirecturi 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   name: 'REDIRECT-URI'
   properties: {
     value: 'https://${containerApp.properties.configuration.ingress.fqdn}/getAToken'
+    contentType: 'text/plain'
+  }
+}
+
+resource apiurl 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+  parent: keyVault
+  name: 'API-URL'
+  properties: {
+    value: 'https://${containerApi.properties.configuration.ingress.fqdn}/graphql/'
     contentType: 'text/plain'
   }
 }

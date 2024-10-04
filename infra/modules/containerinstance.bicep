@@ -69,6 +69,10 @@ resource aci 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
             }
+            {
+              name: 'API_URL'
+              value: 'add value here'
+            }
           ]
           image: aciImage
           ports: [

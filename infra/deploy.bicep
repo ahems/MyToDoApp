@@ -7,7 +7,9 @@ param acrName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
 param cognitiveservicesLocation string = 'canadaeast'
 param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}'
-param rgName string
+param rgName string = resourceGroup().name
+param aadAdminLogin string
+param aadAdminObjectId string
 
 module redis 'modules/redis.bicep' = {
   scope: resourceGroup(rgName)
@@ -40,6 +42,9 @@ module keyvault 'modules/keyvault.bicep' = {
   params: {
     keyVaultName: keyVaultName
   }
+  dependsOn: [
+    identity
+  ]
 }
 
 module database 'modules/database.bicep' = {
@@ -48,6 +53,8 @@ module database 'modules/database.bicep' = {
   params: {
     keyVaultName: keyVaultName
     sqlServerName: sqlServerName
+    aadAdminLogin: aadAdminLogin
+    aadAdminObjectId: aadAdminObjectId
   }
   dependsOn: [
     keyvault
@@ -69,22 +76,14 @@ module database 'modules/database.bicep' = {
   name: 'Deploy-Managed-Identity'
   params: {
     identityName: identityName
-    keyVaultName: keyVaultName
   }
-  dependsOn: [
-    keyvault
-  ]
 }
 
 module appinsights 'modules/applicationinsights.bicep' = {
   scope: resourceGroup(rgName)
   name: 'Deploy-ApplicationInsights'
   params: {
-    keyVaultName: keyVaultName
     appName: appInsightsName
     workspaceName: workspaceName
   }
-  dependsOn: [
-    keyvault
-  ]
 }

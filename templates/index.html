@@ -108,13 +108,10 @@
                 <div id="details-div" class="card">
                     <div class="card-body">
                         <p><strong>Task:</strong> {{ session["todo"].name }}</p>
-                        <p><strong>Priority: </strong> {{ session["todo"].priority_str() }}</p>
+                        <p><strong>Priority: </strong> {{ session["todo"].priority }}</p>
                         <p><strong>Due Date:</strong> {{ session["todo"].due_date }} </p> 
                         <p><strong>Additional Notes:</strong> {{ session["todo"].notes }}</p>
-                        <p><strong>Completed:</strong> {{ session["todo"].completed_str() }}</p>
-                        <p><strong>Due Date:</strong> {{ session["todo"].due_date }} </p> 
-                        <p><strong>Additional Notes:</strong> {{ session["todo"].notes }}</p>
-                        <p><strong>Completed:</strong> {{ session["todo"].completed_str() }}</p>
+                        <p><strong>Completed:</strong> {{ session["todo"].completed }}</p>
                     </div>
                 </div>
                 {% endif %}

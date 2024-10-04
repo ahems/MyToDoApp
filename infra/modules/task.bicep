@@ -6,7 +6,8 @@ param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)
 @secure()
 param contextAccessToken string
 param contextPath string
-
+param repositoryUrl string
+param repoName string = 'todoapp'
 
 resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
   name: identityName
@@ -38,29 +39,35 @@ resource acrTask 'Microsoft.ContainerRegistry/registries/tasks@2019-06-01-previe
       isPushEnabled: true
       noCache: false
       imageNames: [
-        '${acr.properties.loginServer}/todoapp:${taskBuildVersionTag}'
+        '${acr.properties.loginServer}/${repoName}:${taskBuildVersionTag}'
       ]
     }
     trigger: {
-      timerTrigger: {
-        schedule: '0 0 * * *'
-        status: 'Disabled'
-      }
-      sourceTriggers: [ 
+      sourceTriggers: [
         {
-        sourceRepository: sourceRepository
-        branch: 'main'
-        repositoryUrl: repositoryUrl
-        sourceControlType: 'Github'
-        soruceControlAuthProperties: {
-          token: contextAccessToken
+          name: 'main'
+          sourceRepository: {
+            sourceControlType: 'Github'
+            repositoryUrl: repositoryUrl
+            branch: 'main'
+            sourceControlAuthProperties: {
+              token: contextAccessToken
+              tokenType: 'PAT'
+            }
+          }
+          sourceTriggerEvents: [
+            'commit'
+          ]
+          status: 'Enabled'
         }
-        sourceTriggerEvents: [
-          'commit'
-        ]
-        status: 'Enabled'
-      }
+      ]
+      timerTriggers: [
+        {
+          name: 'runAtMidnightEveryDay'
+          schedule: '0 0 * * *' // This cron expression represents midnight every day
+          status: 'Enabled'
+        }
+      ]
     }
-    status: 'Enabled'
   }
 }

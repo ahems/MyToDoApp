@@ -4,8 +4,10 @@ from re import S
 import identity.web
 import redis
 import secrets
+import requests
 from flask import Flask, render_template, request, redirect, url_for, session, url_for
 from flask_session import Session
+from sqlalchemy import null
 from database import db, Todo
 from recommendation_engine import RecommendationEngine
 from tab import Tab
@@ -27,8 +29,8 @@ logger.setLevel(INFO)
 
 app = Flask(__name__)
 
-# mssql+pyodbc://<sql user name>:<password>@<azure sql server>.database.windows.net:1433/todo?driver=ODBC+Driver+17+for+SQL+Server
-# print(pyodbc.drivers())
+# No Entra ID auth - connection_string = f"mssql+pyodbc://{sql_user_name}:{sql_password}@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+18+for+SQL+Server"
+# Entra ID auth - connection_string = f"mssql+pyodbc://@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+18+for+SQL+Server;Authentication=ActiveDirectoryMsi;"
 driver="{ODBC Driver 18 for SQL Server}"
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
@@ -40,24 +42,18 @@ if AZURE_CLIENT_ID:
     credential = DefaultAzureCredential()
     key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
     client = SecretClient(vault_url=key_vault_uri, credential=credential)
-    sql_user_name = client.get_secret("AZURESQLUSER").value;
-    sql_password = client.get_secret("AZURESQLPASSWORD").value;
-    azure_sql_server= client.get_secret("AZURESQLSERVER").value;
-    azure_sql_port = client.get_secret("AZURESQLPORT").value;
     AUTHORITY=client.get_secret("AUTHORITY").value;
     CLIENTID=client.get_secret("CLIENTID").value;
     CLIENTSECRET=client.get_secret("CLIENTSECRET").value;
     REDIS_CONNECTION_STRING=client.get_secret("REDIS-CONNECTION-STRING").value;
     redirect_uri = client.get_secret("REDIRECT-URI").value;
+    api_url = client.get_secret("API-URL").value;
 else:
-    sql_user_name = os.environ.get("AZURE_SQL_USER");
-    sql_password = os.environ.get("AZURE_SQL_PASSWORD");
-    azure_sql_server= os.environ.get("AZURE_SQL_SERVER");
-    azure_sql_port = os.environ.get("AZURE_SQL_PORT");
     AUTHORITY=os.environ.get("AUTHORITY");
     CLIENTID=os.environ.get("CLIENTID");
     CLIENTSECRET=os.environ.get("CLIENTSECRET");
-    REDIS_CONNECTION_STRING=os.environ.get("REDIS-CONNECTION-STRING");
+    REDIS_CONNECTION_STRING=os.environ.get("REDIS_CONNECTION_STRING");
+    api_url = os.environ.get("API_URL");
 
 # Configure Session Storage
 if REDIS_CONNECTION_STRING:
@@ -85,19 +81,16 @@ auth = identity.web.Auth(
     client_credential=CLIENTSECRET,
 )
 
-connection_string = f"mssql+pyodbc://{sql_user_name}:{sql_password}@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+18+for+SQL+Server"
-
-# TODO: Use a Managed Identity to access Database e.g. connection_string = f"Driver=" + driver + ";Server=" + azure_sql_server + ";PORT=" + azure_sql_port + ";Database=todo;Authentication=ActiveDirectoryMsi"
-
 # Use local database if Azure SQL server is not configured
-if not azure_sql_server:
-    print('Azure SQL not configured, Using local SQLLite database')
+connection_string = os.environ.get("DATABASE_CONNECTION_STRING")
+
+if not connection_string:
+    print('DATABASE_CONNECTION_STRING environment variable missing, Using local SQLLite database')
     basedir = os.path.abspath(os.path.dirname(__file__))   # Get the directory of the this file
     print('Base directory:', basedir)
     todo_file = os.path.join(basedir, 'todo_list.txt')     # Create the path to the to-do list file using the directory
     app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(basedir, 'todos.db')
 else:
-    print('Using Azure SQL Server - ' + azure_sql_server)
     app.config["SQLALCHEMY_DATABASE_URI"] = connection_string
 
 print('Initializing App')
@@ -115,8 +108,45 @@ print('Database Initialized')
 
 @app.before_request
 def load_data_to_session():
-    todos = Todo.query.filter_by(oid=session.get("oid")).all()
-    print("Loading data for OID: ", session.get("oid"))
+
+    global api_url
+    print("Loading data from API for OID: ", session.get("oid"))
+
+    headers = {
+        "Content-Type": "application/json",
+        'Authorization': f'Bearer {session.get("token")}'
+    }
+
+    query = f"""
+    {{
+        todos(filter: {{ oid: {{ eq: "{session.get("oid")}" }} }}) {{
+                items {{
+                    id
+                    name
+                    recommendations_json
+                    notes
+                    priority
+                    completed
+                    due_date
+                    oid
+                }}
+            }}
+        }}
+    """
+
+    # The payload for the POST request
+    payload = {"query": query}
+
+    # Make the POST request
+    response = requests.post(api_url, json=payload, headers=headers)
+
+    if response.status_code == 200:
+        todos = response.json().get("data").get("todos").get("items")
+        session["todos"] = todos
+    else:
+        print("Failed to load data from API -" + response.text)
+        session["todos"] = null
+
     session["todos"] =todos 
     session["todo"] =None
     session["TabEnum"] = Tab
@@ -125,29 +155,64 @@ def load_data_to_session():
 
 @app.route("/")
 def index():
+
+    scope = ["User.Read"]
+
     if not auth.get_user():
         return redirect(url_for("login"))
     else:
         session["oid"] = auth.get_user().get("oid")
         session["name"] = auth.get_user().get("name")
+        session["token"] = auth.get_token_for_user(scope)['access_token']
         return render_template("index.html")  
 
 @app.route("/add", methods=["POST"])
 def add_todo():
 
-    # Get the data from the form
-    todo = Todo(
-        name=request.form["todo"]
-    )
+    global api_url
+
+    #todo = Todo(
+    #    name=request.form["todo"]
+    #)
+    #todo.oid = session.get("oid")
+    #db.session.add(todo)
+    #db.session.commit()
     print("Adding TODO: User OID: ", session.get("oid"))
-    todo.oid = session.get("oid")
 
-    # Add the new ToDo to the list
-    db.session.add(todo)
-    db.session.commit()
+    mutation = """
+    mutation Createtodo($name: String!, $oid: String!) {
+        createtodo(item: {name: $name, oid: $oid}) {
+            id
+            name
+            recommendations_json
+            notes
+            priority
+            completed
+            due_date
+            oid
+        }
+    }
+    """
+    # Prepare the variables
+    variables = {
+        "name": request.form["todo"],
+        "oid": session.get("oid")
+    }
 
-    # Add the new ToDo to the list
-    return redirect(url_for('index'))
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {session.get("token")}'
+    }
+
+    # Send the request
+    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
+
+    # Check for errors or handle the response as needed
+    if response.status_code == 200:
+        # Success handling, redirect to index
+        return redirect(url_for('index'))
+    else:
+        return "An error occurred", 500
 
 # Details of ToDo Item
 @app.route('/details/<int:id>', methods=['GET'])
@@ -156,7 +221,38 @@ def details(id):
     if not auth.get_user():
         return redirect(url_for("login"))
     
-    todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+    # todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+
+    query = """
+        query Todo_by_pk($id: Int!) {
+            todo_by_pk(id: $id) {
+                id
+                name
+                recommendations_json
+                notes
+                priority
+                completed
+                due_date
+                oid
+            }
+        }
+    """
+    variables = {"id": id}
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {session.get("token")}'
+    }
+
+    response = requests.post(api_url, json={'query': query, 'variables': variables}, headers=headers)
+    
+    # Check if the request was successful
+    if response.status_code == 200:
+        # Extract the data from the response
+        todo = response.json().get("data", {}).get("todo_by_pk", None)
+    else:
+        print("Failed to load data from API -" + response.text)
+
     if todo is None:
         return redirect(url_for('index'))
     
@@ -325,6 +421,7 @@ def auth_response():
     result = auth.complete_log_in(request.args)
     if "error" in result:
         return render_template("auth_error.html", result=result)
+   
     return redirect(url_for("index"))
 
 @app.route("/logout")
