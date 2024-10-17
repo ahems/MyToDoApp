@@ -13,7 +13,7 @@ We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Fol
   * SUBSCRIPTION_ID - the GUID of the ID of your Azure Subscription
   * RESOURCE_GROUP - the name of the Resource Group yuo will deploy to
   * EMAIL - your email address or get it by running (az account list | ConvertFrom-Json).user[1].name
-  * OBJECT_ID - this is the ObjectID of your account in Entra ID. Get this value using: az ad user list --upn (az account list | ConvertFrom-Json).user[1].name) | ConvertFrom-Json).objectId
+  * OBJECT_ID - this is the ObjectID of your account in Entra ID. Get this value using: az ad user list --upn (az account list | ConvertFrom-Json).user[1].name) | ConvertFrom-Json).id
 * Download the code from your cloned repo to your local machine
 * (Optional) If your Azure subscription is new, run the "/scripts/Register-Resource-Providers.ps1" Powershell script from a Terminal in VS Code
 * Right-Click on the file "/infra/deploy.bicep" and select "Deploy Bicep File...". Select or create the Resource Group for the name you set the RESOURCE_GROUP variable and the "deploy.bicepparam" parameters file. Wait for it to complete.

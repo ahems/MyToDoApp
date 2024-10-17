@@ -47,6 +47,17 @@ resource sqlServerAdmin 'Microsoft.Sql/servers/administrators@2021-02-01-preview
   }
 }
 
+resource azureADOnlyAuth 'Microsoft.Sql/servers/azureADOnlyAuthentications@2021-02-01-preview' = {
+  parent: sqlServer
+  name: 'default'
+  properties: {
+    azureADOnlyAuthentication: true
+  }
+  dependsOn: [
+    sqlServerAdmin
+  ]
+}
+
 resource sqlDatabase 'Microsoft.Sql/servers/databases@2021-02-01-preview' = {
   parent: sqlServer
   name: sqlDatabaseName
