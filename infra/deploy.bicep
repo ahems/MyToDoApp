@@ -8,8 +8,12 @@ param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup()
 param cognitiveservicesLocation string = 'canadaeast'
 param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}'
 param rgName string = resourceGroup().name
+param location string = resourceGroup().location
+param repositoryUrl string = 'https://github.com/ahems/MyToDoApp'
 param aadAdminLogin string
 param aadAdminObjectId string
+@secure()
+param gitAccessToken string
 
 module redis 'modules/redis.bicep' = {
   scope: resourceGroup(rgName)
@@ -86,4 +90,38 @@ module appinsights 'modules/applicationinsights.bicep' = {
     appName: appInsightsName
     workspaceName: workspaceName
   }
+}
+
+module buildTaskForWeb 'modules/task.bicep' = {
+  name: 'Deploy-Build-Task-For-Web-To-ACR'
+  params: {
+    acrName: acrName
+    location: location
+    acrTaskName: 'buildWebApp'
+    contextAccessToken: gitAccessToken
+    contextPath: './'
+    repositoryUrl: repositoryUrl
+    repoName: 'todoapp'
+    taskBuildVersionTag: 'latest'
+  }
+  dependsOn: [
+    acr
+  ]
+}
+
+module buildTaskForAPI 'modules/task.bicep' = {
+  name: 'Deploy-Build-Task-For-API-To-ACR'
+  params: {
+    acrName: acrName
+    location: location
+    acrTaskName: 'buildAPIApp'
+    contextAccessToken: gitAccessToken
+    contextPath: './api'
+    repositoryUrl: repositoryUrl
+    repoName: 'todoapi'
+    taskBuildVersionTag: 'latest'
+  }
+  dependsOn: [
+    acr
+  ]
 }

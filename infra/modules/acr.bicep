@@ -21,25 +21,9 @@ resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' = {
   name: acrName
   location: resourceGroup().location
   sku: {
-    name: 'Premium'
+    name: 'Basic'
   }
   properties: {
-    publicNetworkAccess: 'Enabled'
-    networkRuleBypassOptions: 'AzureServices'
-    networkRuleSet: {
-      defaultAction: 'Allow'
-    }
-    encryption: {
-      status: 'Disabled'
-    }
-    policies: {
-      quarantinePolicy: {
-        status: 'Disabled'
-      }
-      trustPolicy: {
-        status: 'Enabled'
-      }
-    }
     adminUserEnabled: true
     zoneRedundancy: 'Disabled'
   }

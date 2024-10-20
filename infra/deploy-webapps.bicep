@@ -12,10 +12,6 @@ param azureSqlPort string = '1433'
 param appServicePlanSku string = 'B1'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
 
-resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
-  name: keyVaultName
-}
-
 module appServicePlan  'modules/appserviceplan.bicep' = {
   name: 'Deploy-App-Service-Plan'
   params: {
@@ -29,7 +25,6 @@ module webapp  'modules/webapp.bicep' = {
   name: 'Deploy-Web-App'
   params: {
     keyVaultName:keyVaultName
-    redisConnectionString:keyVault.getSecret('REDIS-CONNECTION-STRING')
     location: location
     sqlServerName:sqlServerName
     appInsightsName:appInsightsName

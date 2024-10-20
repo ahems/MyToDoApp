@@ -10,9 +10,6 @@ param azureSqlPort string = '1433'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 
-@secure()
-param redisConnectionString string
-
 var appImage = '${containerRegistryName}.azurecr.io/${appImageNameAndVersion}'
 var DATABASE_CONNECTION_STRING = 'mssql+pyodbc://@${sqlServer.properties.fullyQualifiedDomainName}:${azureSqlPort}/todo?driver=ODBC+Driver+18+for+SQL+Server;Authentication=ActiveDirectoryMsi;User Id=${azidentity.properties.clientId}'
 
@@ -36,10 +33,6 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2020-12-01' existing = {
   name: appServicePlanName
 }
 
-resource apiApp 'Microsoft.Web/sites@2022-09-01' existing = {
-  name: apiAppName
-}
-
 resource webApp 'Microsoft.Web/sites@2022-09-01' = {
   name: webAppName
   location: location
@@ -54,16 +47,8 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
     serverFarmId: appServicePlan.id
     siteConfig: {
       acrUseManagedIdentityCreds: true
-      acrUserManagedIdentityID: azidentity.id
+      acrUserManagedIdentityID: azidentity.properties.clientId      
       appSettings: [
-        {
-          name: 'API_URL'
-          value: 'https://${apiApp.properties.defaultHostName}/graphql/'
-        }
-        {
-          name: 'REDIS_CONNECTION_STRING'
-          value: redisConnectionString
-        }
         {
           name:'KEY_VAULT_NAME'
           value: keyVaultName
@@ -73,16 +58,16 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
           value: azidentity.properties.clientId
         }
         {
-          name: 'DATABASE_CONNECTION_STRING'
-          value: DATABASE_CONNECTION_STRING
-        }
-        {
           name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
           value: appInsights.properties.InstrumentationKey
         }
         {
           name: 'DOCKER_REGISTRY_SERVER_URL'
           value: 'https://${acr.properties.loginServer}'
+        }
+        {
+          name: 'DATABASE_CONNECTION_STRING'
+          value: DATABASE_CONNECTION_STRING
         }
         {
           name: 'WEBSITES_PORT'

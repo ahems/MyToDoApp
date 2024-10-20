@@ -35,7 +35,7 @@ $app = Get-AzADApplication -DisplayName $appName
 
 if (-not $app) {
     Write-Output "Application not found. Creating a new Azure AD Application Registration..."
-    New-AzADApplication -DisplayName $appName -IdentifierUris "https://$appName"
+    New-AzADApplication -DisplayName $appName
     
     # Wait for 5 seconds to ensure the application is created
     Start-Sleep -Seconds 5
@@ -51,7 +51,7 @@ if ($webApp) {
     #Set the reply URL
     Set-AzADApplication -ObjectId $app.Id -ReplyUrls "https://$($webApp.DefaultHostName)/getAToken"
 } else {
-    Write-Error "No web app found in the resource group $resourceGroupName that begins with 'todoapp-webapp-web-'"
+    # Write-Error "No web app found in the resource group $resourceGroupName that begins with 'todoapp-webapp-web-'"
 }
 
 # Check if the Service Principal already exists
@@ -70,13 +70,10 @@ if ($sp) {
     # Output the Values
     $clientId = $app.AppId
     $clientSecret = $password.SecretText
-    $authority = "https://login.microsoftonline.com/$tenantId"
 
-    Write-Output "CLIENTID: $clientId"
-    Write-Output "CLIENTSECRET: $clientSecret"
-    Write-Output "AUTHORITY: $authority"
+    Write-Output "CLIENT_ID: $clientId"
+    Write-Output "CLIENT_SECRET: $clientSecret"
 
-    $env:AUTHORITY = $authority
-    $env:CLIENTID = $clientId
-    $env:CLIENTSECRET = $clientSecret
+    $env:CLIENT_ID = $clientId
+    $env:CLIENT_SECRET = $clientSecret
 }

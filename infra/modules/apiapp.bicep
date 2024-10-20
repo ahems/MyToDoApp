@@ -7,6 +7,8 @@ param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)
 param apiImageNameAndVersion string = 'todoapi:latest'
 param azureSqlPort string = '1433'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
+param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
+
 
 var apiImage = '${containerRegistryName}.azurecr.io/${apiImageNameAndVersion}'
 var DATABASE_CONNECTION_STRING = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},${azureSqlPort};Initial Catalog=todo;Authentication=Active Directory Default;User Id=${azidentity.properties.clientId}'
@@ -29,6 +31,10 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
 
 resource appServicePlan 'Microsoft.Web/serverfarms@2020-12-01' existing = {
   name: appServicePlanName
+}
+
+resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
+  name: keyVaultName
 }
 
 resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
@@ -66,6 +72,15 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
       ]
       linuxFxVersion: 'DOCKER|${apiImage}'
     }
+  }
+}
+
+resource APIURL 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+  parent: keyVault
+  name: 'API-URL'
+  properties: {
+    value: 'https://${apiApp.properties.defaultHostName}/graphql/'
+    contentType: 'text/plain'
   }
 }
 
