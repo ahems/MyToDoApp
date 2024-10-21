@@ -1,48 +1,43 @@
-#!/usr/bin/env pwsh
+# Ensure Azure PowerShell module is installed and imported
+if (-not (Get-Module -ListAvailable -Name Az)) {
+    Install-Module -Name Az -AllowClobber -Scope CurrentUser
+}
+Import-Module Az
 
-# Read TenantId and SubscriptionId from environment variables
-$tenantId = (Get-Item -Path Env:TENANT_ID).Value
-$subscriptionId = (Get-Item -Path Env:SUBSCRIPTION_ID).Value
-$resourceGroupName = (Get-Item -Path Env:RESOURCE_GROUP).Value
+# Login to Azure
+Connect-AzAccount
 
-# Check if the environment variables are set
-if (-not $tenantId) {
-    Write-Error "TENANT_ID environment variable is not set."
-    exit 1
+# Retrieve the list of resource groups
+$resourceGroups = Get-AzResourceGroup
+
+# Display the list of resource groups with numbers
+Write-Output "Available Resource Groups:"
+for ($i = 0; $i -lt $resourceGroups.Count; $i++) {
+    Write-Output "$($i + 1). $($resourceGroups[$i].ResourceGroupName)"
 }
 
-if (-not $subscriptionId) {
-    Write-Error "SUBSCRIPTION_ID environment variable is not set."
-    exit 1
-}
-if (-not $resourceGroupName) {
-    Write-Error "RESOURCE_GROUP environment variable is not set."
-    exit 1
-}
-# Check if the resource group exists
-$rgExists = az group exists --name $resourceGroupName
+# Prompt the user to select a resource group by entering a number
+$selection = Read-Host "Enter the number of the resource group you want to select"
 
-if ($rgExists -eq "false") {
-    Write-Output "Resource group $resourceGroupName does not exist."
-    exit 1
+# Validate the input
+if ($selection -match '^\d+$' -and $selection -gt 0 -and $selection -le $resourceGroups.Count) {
+    $selectedResourceGroup = $resourceGroups[$selection - 1].ResourceGroupName
+    Write-Output "You selected: $selectedResourceGroup"
+} else {
+    Write-Error "Invalid selection. Please run the script again and enter a valid number."
+    exit
 }
-
-# Log in to Azure
-Write-Output "Logging in to Azure..."
-az login --tenant $tenantId
-
-# Set the subscription
-az account set --subscription $subscriptionId
 
 # Get the name of the first ACR in the resource group
-$acrName = az acr list --resource-group $resourceGroupName --query '[0].name' -o tsv
+$acrName = (Get-AzContainerRegistry -ResourceGroupName $selectedResourceGroup | Select-Object -First 1).Name
 
 # Check if an ACR was found
 if (-not $acrName) {
-    Write-Output "No ACR found in resource group $resourceGroupName"
+    Write-Output "No ACR found in resource group $selectedResourceGroup"
     exit 1
 }
+Write-Output "Found Azure Container Registry: $acrName"
 
 # Run the ACR task
-az acr task run --name buildWebApp --registry $acrName
-az acr task run --name buildAPIApp --registry $acrName
+az acr task run --name buildWebApp --registry $acrName --no-logs --no-wait
+az acr task run --name buildAPIApp --registry $acrName --no-logs --no-wait

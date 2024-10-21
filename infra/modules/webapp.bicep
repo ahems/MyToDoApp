@@ -1,7 +1,7 @@
 param sqlServerName string = 'todoapp-sql-${uniqueString(resourceGroup().id)}'
 param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
 param webAppName string = 'todoapp-webapp-web-${uniqueString(resourceGroup().id)}'
-param apiAppName string = 'todoapp-webapp-api-${uniqueString(resourceGroup().id)}'
+param apiAppURL string = 'https://todoapp-webapp-api-${uniqueString(resourceGroup().id)}/graphql/'
 param location string = resourceGroup().location
 param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
@@ -72,6 +72,10 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
         {
           name: 'WEBSITES_PORT'
           value: '80'
+        }
+        {
+          name: 'API_URL'
+          value: apiAppURL
         }
       ]
       linuxFxVersion: 'DOCKER|${appImage}'

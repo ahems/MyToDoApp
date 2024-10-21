@@ -1,26 +1,17 @@
+# Check if the PowerShell version is at least 7
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Error "This script requires PowerShell 7 or above. Please upgrade your PowerShell version - https://aka.ms/PSWindows"
+    exit
+}
+
 # Install Azure PowerShell if not already installed
 if (-not (Get-Module -ListAvailable -Name Az)) {
     Install-Module -Name Az -AllowClobber -Scope CurrentUser
 }
 
-# Read TenantId and SubscriptionId from environment variables
-$tenantId = (Get-Item -Path Env:TENANT_ID).Value
-$subscriptionId = (Get-Item -Path Env:SUBSCRIPTION_ID).Value
-
-# Check if the environment variables are set
-if (-not $tenantId) {
-    Write-Error "TENANT_ID environment variable is not set. Please set the environment variable and try again using the following command: $env:TENANT_ID = <your EntraID>" 
-    exit 1
-}
-
-if (-not $subscriptionId) {
-    Write-Error "SUBSCRIPTION_ID environment variable is not set.. Please set the environment variable and try again using the following command: $env:SUBSCRIPTION_ID = <your SUBSCRIPTION_ID>"
-    exit 1
-}
-
 # Login to Azure
-Connect-AzAccount -TenantId $tenantId
-Set-AzContext -SubscriptionId $subscriptionId -TenantId $tenantId -Name "MyContext" -Force
+Connect-AzAccount
+
 # Get the list of all Resource Providers
 $resourceProviders = Get-AzResourceProvider -ListAvailable
 

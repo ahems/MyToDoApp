@@ -1,34 +1,40 @@
+# Check if the PowerShell version is at least 7
+if ($PSVersionTable.PSVersion.Major -lt 7) {
+    Write-Error "This script requires PowerShell 7 or above. Please upgrade your PowerShell version - https://aka.ms/PSWindows"
+    exit
+}
+
 # Install Azure PowerShell if not already installed
 if (-not (Get-Module -ListAvailable -Name Az)) {
     Install-Module -Name Az -AllowClobber -Scope CurrentUser
 }
 
-# Read TenantId and SubscriptionId from environment variables
-$tenantId = (Get-Item -Path Env:TENANT_ID).Value
-$subscriptionId = (Get-Item -Path Env:SUBSCRIPTION_ID).Value
-$resourceGroupName = (Get-Item -Path Env:RESOURCE_GROUP).Value
-
-# Check if the environment variables are set
-if (-not $tenantId) {
-    Write-Error "TENANT_ID environment variable is not set."
-    exit 1
-}
-
-if (-not $subscriptionId) {
-    Write-Error "SUBSCRIPTION_ID environment variable is not set."
-    exit 1
-}
-if (-not $resourceGroupName) {
-    Write-Error "RESOURCE_GROUP environment variable is not set."
-    exit 1
-}
-
-# Login to Azure
-Connect-AzAccount -TenantId $tenantId
-Set-AzContext -SubscriptionId $subscriptionId -TenantId $tenantId -Name "MyContext" -Force
-
 # Variables
 $appName = "MyToDoApp"
+
+# Login to Azure
+Connect-AzAccount
+
+# Retrieve the list of resource groups
+$resourceGroups = Get-AzResourceGroup
+
+# Display the list of resource groups with numbers
+Write-Output "Available Resource Groups:"
+for ($i = 0; $i -lt $resourceGroups.Count; $i++) {
+    Write-Output "$($i + 1). $($resourceGroups[$i].ResourceGroupName)"
+}
+
+# Prompt the user to select a resource group by entering a number
+$selection = Read-Host "Enter the number of the resource group you want to select"
+
+# Validate the input
+if ($selection -match '^\d+$' -and $selection -gt 0 -and $selection -le $resourceGroups.Count) {
+    $selectedResourceGroup = $resourceGroups[$selection - 1].ResourceGroupName
+    Write-Output "You selected: $selectedResourceGroup"
+} else {
+    Write-Error "Invalid selection. Please run the script again and enter a valid number."
+    exit
+}
 
 # Create an Azure AD Application Registration if it doesn't exist
 $app = Get-AzADApplication -DisplayName $appName
@@ -45,13 +51,13 @@ if (-not $app) {
 }
 
 # Look up the default URL of the first web app in the resource group that begins with "todoapp-webapp-web-"
-$webApp = Get-AzWebApp -ResourceGroupName $resourceGroupName | Where-Object { $_.Name -like "todoapp-webapp-web-*" } | Select-Object -First 1
+$webApp = Get-AzWebApp -ResourceGroupName $selectedResourceGroup | Where-Object { $_.Name -like "todoapp-webapp-web-*" } | Select-Object -First 1
 
 if ($webApp) {
     #Set the reply URL
     Set-AzADApplication -ObjectId $app.Id -ReplyUrls "https://$($webApp.DefaultHostName)/getAToken"
 } else {
-    # Write-Error "No web app found in the resource group $resourceGroupName that begins with 'todoapp-webapp-web-'"
+    # Write-Error "No web app found in the resource group $selectedResourceGroup that begins with 'todoapp-webapp-web-'"
 }
 
 # Check if the Service Principal already exists

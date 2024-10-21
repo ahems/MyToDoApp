@@ -95,3 +95,5 @@ resource log 'Microsoft.Web/sites/config@2020-12-01' = {
     }
   }
 }
+
+output apiAppURL string = 'https://${apiApp.properties.defaultHostName}/graphql/'

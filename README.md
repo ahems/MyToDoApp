@@ -1,6 +1,6 @@
 # Deploying the ToDo App To Azure
 
-## Option 1 - Deployment from Visual Studio Code
+## Option 1 - Deployment from Visual Studio Code to Web Apps
 
 We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Follow these steps:
 
@@ -9,41 +9,47 @@ We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Fol
 * Set these environment variables:
   * gitAccessToken - use the value in the previous step
   * repositoryUrl - use the URL of your cloned GitHub repo
-  * TENANT_ID - the GUID of the ID of your Entra ID tenant
-  * SUBSCRIPTION_ID - the GUID of the ID of your Azure Subscription
-  * RESOURCE_GROUP - the name of the Resource Group yuo will deploy to
-  * EMAIL - your email address or get it by running (az account list | ConvertFrom-Json).user[1].name
-  * OBJECT_ID - this is the ObjectID of your account in Entra ID. Get this value using: az ad user list --upn (az account list | ConvertFrom-Json).user[1].name) | ConvertFrom-Json).id
+  * EMAIL - your accounts' email address in Entra ID, used to set the admin of the database. If you need to you can get this value by running (az account list | ConvertFrom-Json).user[1].name
+  * OBJECT_ID - your accounts' ObjectID in Entra ID. Get this value using: az ad user list --upn (az account list | ConvertFrom-Json).user[1].name) | ConvertFrom-Json).id
 * Download the code from your cloned repo to your local machine
 * (Optional) If your Azure subscription is new, run the "/scripts/Register-Resource-Providers.ps1" Powershell script from a Terminal in VS Code
 * Right-Click on the file "/infra/deploy.bicep" and select "Deploy Bicep File...". Select or create the Resource Group for the name you set the RESOURCE_GROUP variable to, and select the "deploy.bicepparam" parameters file which will expect environment variables "EMAIL", "repositoryUrl", "gitAccessToken" and "OBJECT_ID" to be set as per the previous steps. Wait for this to complete.
 * Run the "/scripts/run-acr-build-task.ps1" Powershell script in a terminal in VS Code to manually kick off the Azure Container Registry tasks created in the previous step. This will pull down the source code from your cloned GitHub repo, build it and push it to the Container Registry ready for deployment.
-
-### Host in Web Apps
-
-* Right-Click on the file "/infra/deploy-webapps.bicep", select "Deploy Bicep File...". Select your previous Resource Group, no parameters file and wait for it to complete. This will deploy the two Web Apps and set all necessary App Settings using the values from your KeyVault. NOTE: You may need to go to "Deployment Center" of each of your web apps and select the identity in the "Identity" drop-down if it's not already populated in order for the web apps to successfully pull the docker images from your Container registry.
 * Run the "/scripts/create-app-and-secret.ps1" Powershell script in a terminal in VS Code to create an App and Client Secret in your Entra ID tenant. Your deployed App will use these values to Authenticate users.
 * Add two more Environment Variables, "CLIENT_ID" and "CLIENT_SECRET" each with the values output by the previous script.
-* Right-Click on the file "/infra/deploy-authentication.bicep" and select "Deploy Bicep File...". Select your previous Resource Group, use the "deploy-authentication.bicepparams" parameters file to use your local environment variables to set values in the KeyVault created in the previous step.
-
-
-### Host in Azure Container Apps
-
-* Right-Click on the file "/infra/deploy-aca.bicep", select "Deploy Bicep File...". Select your previous Resource Group, no parameters file and wait for it to complete. This will deploy the two Web Apps and set all necessary App Settings using the values from your KeyVault.
+* Right-Click on the file "/infra/deploy-authentication.bicep" and select "Deploy Bicep File...". Select your previous Resource Group, use the "deploy-authentication.bicepparams" parameters file to use your local environment variables. This script will store these values in the KeyVault created in the previous step for use by the Web App.
 
 ### Configure Database
 
 The next step is to configure the Database, following these instructions [text](https://learn.microsoft.com/en-us/azure/app-service/tutorial-connect-msi-sql-database)
 
-* Log in to the database using [SQL Server Management Studio](https://learn.microsoft.com/en-us/sql/ssms/download-sql-server-management-studio-ssms) and your email address.
+* Log in to the database using the Azure Portal, using Query Editor and Entra ID Authentication.
+* Get the name of your User Managed Identity by running this Powershell Command, replacing "MyToDoApp" with the name of your Resource Group: (Get-AzUserAssignedIdentity -ResourceGroupName "MyToDoApp" | Select-Object -First 1).Name
 * Select the "ToDo" database, create a query and run this command tp grant the User Managed Identity Access to the database, replacing "todoapp-identity-jvmw6a2wit3yu" example below with the name of your Managed Identity:
 
-CREATE USER [todoapp-identity-jvmw6a2wit3yu] FROM EXTERNAL PROVIDER;
+CREATE USER [todoapp-identity-xyjya2a3yrfuw] FROM EXTERNAL PROVIDER;
+ALTER ROLE db_datareader ADD MEMBER [todoapp-identity-xyjya2a3yrfuw];
+ALTER ROLE db_datawriter ADD MEMBER [todoapp-identity-xyjya2a3yrfuw];
+ALTER ROLE db_ddladmin ADD MEMBER [todoapp-identity-xyjya2a3yrfuw];
 
-ALTER ROLE db_datareader ADD MEMBER [todoapp-identity-jvmw6a2wit3yu];
-ALTER ROLE db_datawriter ADD MEMBER [todoapp-identity-jvmw6a2wit3yu];
-ALTER ROLE db_ddladmin ADD MEMBER [todoapp-identity-jvmw6a2wit3yu];
-GO
+This will give your User Managed Identity access to the ToDo Database.
+
+* Finally, run this script to create the ToDo Database table that will hold all our data:
+
+CREATE TABLE ToDo (
+    id INT PRIMARY KEY,
+    name NVARCHAR(100) NOT NULL,
+    recommendations_json JSON,
+    notes NVARCHAR(100),
+    priority INT DEFAULT 0,
+    completed BIT DEFAULT 0,
+    due_date NVARCHAR(50),
+    oid NVARCHAR(50)
+);
+
+### Host in Azure Container Apps
+
+* Right-Click on the file "/infra/deploy-aca.bicep", select "Deploy Bicep File...". Select your previous Resource Group, no parameters file and wait for it to complete. This will deploy the two Web Apps and set all necessary App Settings using the values from your KeyVault.
 
 ## Option 2 - Deployment via GitHub Actions using OpenID Connect and Bicep (IaC)
 

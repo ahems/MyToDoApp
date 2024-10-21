@@ -10,6 +10,12 @@ param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}
 param rgName string = resourceGroup().name
 param location string = resourceGroup().location
 param repositoryUrl string = 'https://github.com/ahems/MyToDoApp'
+param apiAppName string = 'todoapp-webapp-api-${uniqueString(resourceGroup().id)}'
+param webAppName string = 'todoapp-webapp-web-${uniqueString(resourceGroup().id)}'
+param apiImageNameAndVersion string = 'todoapi:latest'
+param appImageNameAndVersion string = 'todoapp:latest'
+param appServicePlanSku string = 'B1'
+param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
 param aadAdminLogin string
 param aadAdminObjectId string
 @secure()
@@ -64,7 +70,8 @@ module database 'modules/database.bicep' = {
     keyvault
   ]
 }
- module acr 'modules/acr.bicep' = {
+
+module acr 'modules/acr.bicep' = {
   scope: resourceGroup(rgName)
   name: 'Deploy-ACR'
   params: {
@@ -73,11 +80,11 @@ module database 'modules/database.bicep' = {
   dependsOn: [
     identity
   ]
- }
+}
 
- module identity 'modules/identity.bicep' = {
+module identity 'modules/identity.bicep' = {
   scope: resourceGroup(rgName)
-  name: 'Deploy-Managed-Identity'
+  name: 'Deploy-User-Managed-Identity'
   params: {
     identityName: identityName
   }
@@ -85,7 +92,7 @@ module database 'modules/database.bicep' = {
 
 module appinsights 'modules/applicationinsights.bicep' = {
   scope: resourceGroup(rgName)
-  name: 'Deploy-ApplicationInsights'
+  name: 'Deploy-Application-Insights'
   params: {
     appName: appInsightsName
     workspaceName: workspaceName
@@ -123,5 +130,61 @@ module buildTaskForAPI 'modules/task.bicep' = {
   }
   dependsOn: [
     acr
+  ]
+}
+
+module appServicePlan  'modules/appserviceplan.bicep' = {
+  name: 'Deploy-App-Service-Plan'
+  params: {
+    appServicePlanName:appServicePlanName
+    location: location
+    appServicePlanSku: appServicePlanSku
+  }
+}
+
+module webapp  'modules/webapp.bicep' = {
+  name: 'Deploy-Web-App'
+  params: {
+    keyVaultName:keyVaultName
+    location: location
+    sqlServerName:sqlServerName
+    appInsightsName:appInsightsName
+    webAppName:webAppName
+    apiAppURL:apiapp.outputs.apiAppURL
+    containerRegistryName:acrName
+    identityName:identityName
+    appImageNameAndVersion:appImageNameAndVersion
+    appServicePlanName:appServicePlanName
+  }
+  dependsOn: [
+    appServicePlan
+    apiapp
+    acr
+    keyvault
+    appinsights
+    identity
+    database
+  ]
+}
+
+module apiapp  'modules/apiapp.bicep' = {
+  name: 'Deploy-API-App'
+  params: {
+    location: location
+    sqlServerName:sqlServerName
+    appInsightsName:appInsightsName
+    webAppName:apiAppName
+    containerRegistryName:acrName
+    identityName:identityName
+    apiImageNameAndVersion:apiImageNameAndVersion
+    appServicePlanName:appServicePlanName
+  }
+  dependsOn: [
+    database
+    appServicePlan
+    acr
+    keyvault
+    appinsights
+    identity
   ]
 }

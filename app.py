@@ -47,13 +47,16 @@ if AZURE_CLIENT_ID:
     CLIENTSECRET=client.get_secret("CLIENTSECRET").value;
     REDIS_CONNECTION_STRING=client.get_secret("REDIS-CONNECTION-STRING").value;
     redirect_uri = client.get_secret("REDIRECT-URI").value;
-    api_url = client.get_secret("API-URL").value;
 else:
+    print('Using Environment Variables');
     AUTHORITY=os.environ.get("AUTHORITY");
     CLIENTID=os.environ.get("CLIENTID");
     CLIENTSECRET=os.environ.get("CLIENTSECRET");
     REDIS_CONNECTION_STRING=os.environ.get("REDIS_CONNECTION_STRING");
-    api_url = os.environ.get("API_URL");
+
+api_url = os.environ.get("API_URL");
+if not api_url:
+    raise ValueError("API_URL environment variable is not set")
 
 # Configure Session Storage
 if REDIS_CONNECTION_STRING:

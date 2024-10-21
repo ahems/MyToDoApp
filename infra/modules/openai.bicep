@@ -104,6 +104,7 @@ resource account 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
     disableLocalAuth: false
     dynamicThrottlingEnabled: false
     restrictOutboundNetworkAccess: false
+    restore: true
   }
   sku: sku
 }
