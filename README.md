@@ -10,7 +10,12 @@ We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Fol
   * gitAccessToken - use the value in the previous step
   * repositoryUrl - use the URL of your cloned GitHub repo
   * EMAIL - your accounts' email address in Entra ID, used to set the admin of the database. If you need to you can get this value by running (az account list | ConvertFrom-Json).user[1].name
-  * OBJECT_ID - your accounts' ObjectID in Entra ID. Get this value using: az ad user list --upn (az account list | ConvertFrom-Json).user[1].name) | ConvertFrom-Json).id
+  * OBJECT_ID - your accounts' ObjectID in Entra ID. Get this value using:
+  
+  ```azurecli
+  az ad user list --upn (az account list | ConvertFrom-Json).user[1].name) | ConvertFrom-Json).id
+  ```
+
 * Download the code from your cloned repo to your local machine
 * (Optional) If your Azure subscription is new, run the "/scripts/Register-Resource-Providers.ps1" Powershell script from a Terminal in VS Code
 * Right-Click on the file "/infra/deploy.bicep" and select "Deploy Bicep File...". Select or create the Resource Group for the name you set the RESOURCE_GROUP variable to, and select the "deploy.bicepparam" parameters file which will expect environment variables "EMAIL", "repositoryUrl", "gitAccessToken" and "OBJECT_ID" to be set as per the previous steps. Wait for this to complete.
@@ -21,21 +26,29 @@ We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Fol
 
 ### Configure Database
 
-The next step is to configure the Database, following these instructions [text](https://learn.microsoft.com/en-us/azure/app-service/tutorial-connect-msi-sql-database)
+The next step is to configure the Database. Follow these steps:
 
 * Log in to the database using the Azure Portal, using Query Editor and Entra ID Authentication.
-* Get the name of your User Managed Identity by running this Powershell Command, replacing "MyToDoApp" with the name of your Resource Group: (Get-AzUserAssignedIdentity -ResourceGroupName "MyToDoApp" | Select-Object -First 1).Name
-* Select the "ToDo" database, create a query and run this command tp grant the User Managed Identity Access to the database, replacing "todoapp-identity-jvmw6a2wit3yu" example below with the name of your Managed Identity:
+* Get the name of your User Managed Identity by running this Powershell Command, replacing "MyToDoApp" with the name of your Resource Group (if different):
 
+```powershell
+(Get-AzUserAssignedIdentity -ResourceGroupName "MyToDoApp" | Select-Object -First 1).Name
+```
+
+* In Query Editor in the Azure Portal, select the "ToDo" database, create a query and run this command tp grant the User Managed Identity Access to the database, replacing "todoapp-identity-jvmw6a2wit3yu" example below with the name of your Managed Identity retrieved from the previous step:
+
+```sql
 CREATE USER [todoapp-identity-xyjya2a3yrfuw] FROM EXTERNAL PROVIDER;
 ALTER ROLE db_datareader ADD MEMBER [todoapp-identity-xyjya2a3yrfuw];
 ALTER ROLE db_datawriter ADD MEMBER [todoapp-identity-xyjya2a3yrfuw];
 ALTER ROLE db_ddladmin ADD MEMBER [todoapp-identity-xyjya2a3yrfuw];
+```
 
 This will give your User Managed Identity access to the ToDo Database.
 
 * Finally, run this script to create the ToDo Database table that will hold all our data:
 
+```sql
 CREATE TABLE ToDo (
     id INT PRIMARY KEY,
     name NVARCHAR(100) NOT NULL,
@@ -46,6 +59,7 @@ CREATE TABLE ToDo (
     due_date NVARCHAR(50),
     oid NVARCHAR(50)
 );
+```
 
 ### Host in Azure Container Apps
 
