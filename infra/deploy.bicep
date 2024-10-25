@@ -5,6 +5,7 @@ param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resou
 param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
 param acrName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
+param diagnosticsName string = 'acr-diagnostics-${toLower(uniqueString(resourceGroup().id))}'
 param cognitiveservicesLocation string = 'canadaeast'
 param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}'
 param rgName string = resourceGroup().name
@@ -16,6 +17,7 @@ param apiImageNameAndVersion string = 'todoapi:latest'
 param appImageNameAndVersion string = 'todoapp:latest'
 param appServicePlanSku string = 'B1'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
+param adminUserEnabled bool = true
 param aadAdminLogin string
 param aadAdminObjectId string
 @secure()
@@ -27,6 +29,7 @@ module redis 'modules/redis.bicep' = {
   params: {
     redisCacheName: redisCacheName
     keyVaultName: keyVaultName
+    location: location
   }
   dependsOn: [
     keyvault
@@ -51,6 +54,8 @@ module keyvault 'modules/keyvault.bicep' = {
   name: 'Deploy-KeyVault'
   params: {
     keyVaultName: keyVaultName
+    location: location
+    identityName: identityName
   }
   dependsOn: [
     identity
@@ -65,6 +70,8 @@ module database 'modules/database.bicep' = {
     sqlServerName: sqlServerName
     aadAdminLogin: aadAdminLogin
     aadAdminObjectId: aadAdminObjectId
+    location: location
+    identityName: identityName    
   }
   dependsOn: [
     keyvault
@@ -76,6 +83,11 @@ module acr 'modules/acr.bicep' = {
   name: 'Deploy-ACR'
   params: {
     acrName: acrName
+    identityName: identityName
+    workspaceName: workspaceName
+    adminUserEnabled: adminUserEnabled
+    diagnosticsName: diagnosticsName
+    location: location
   }
   dependsOn: [
     identity
@@ -87,6 +99,7 @@ module identity 'modules/identity.bicep' = {
   name: 'Deploy-User-Managed-Identity'
   params: {
     identityName: identityName
+    location: location
   }
 }
 
@@ -97,6 +110,7 @@ module appinsights 'modules/applicationinsights.bicep' = {
     appName: appInsightsName
     workspaceName: workspaceName
     identityName: identityName
+    location: location
   }
   dependsOn: [
     identity

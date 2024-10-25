@@ -50,20 +50,28 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
-      acrUseManagedIdentityCreds: true
-      acrUserManagedIdentityID: azidentity.id
+      acrUseManagedIdentityCreds: !acr.properties.adminUserEnabled
+      acrUserManagedIdentityID: azidentity.properties.clientId
       appSettings: [
         {
           name: 'DATABASE_CONNECTION_STRING'
           value: DATABASE_CONNECTION_STRING
         }
         {
-          name: 'APPINSIGHTS_INSTRUMENTATIONKEY'
-          value: appInsights.properties.InstrumentationKey
+          name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
+          value: appInsights.properties.ConnectionString
         }
         {
           name: 'DOCKER_REGISTRY_SERVER_URL'
           value: 'https://${acr.properties.loginServer}'
+        }
+        {
+          name: 'DOCKER_REGISTRY_SERVER_USERNAME'
+          value: acr.properties.adminUserEnabled ? acr.listCredentials().username : ''
+        }
+        {
+          name: 'DOCKER_REGISTRY_SERVER_PASSWORD'
+          value: acr.properties.adminUserEnabled ? acr.listCredentials().passwords[0].value : ''
         }
         {
           name: 'WEBSITES_PORT'

@@ -2,6 +2,8 @@ param acrName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param diagnosticsName string = 'acr-diagnostics-${toLower(uniqueString(resourceGroup().id))}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
+param location string = resourceGroup().location
+param adminUserEnabled bool = true
 
 resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
   name: identityName
@@ -19,12 +21,12 @@ resource acrRoleAssignment 'Microsoft.Authorization/roleAssignments@2020-04-01-p
 
 resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' = {
   name: acrName
-  location: resourceGroup().location
+  location: location
   sku: {
     name: 'Basic'
   }
   properties: {
-    adminUserEnabled: true
+    adminUserEnabled: adminUserEnabled
     zoneRedundancy: 'Disabled'
   }
 }
