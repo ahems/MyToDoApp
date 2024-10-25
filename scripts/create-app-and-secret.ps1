@@ -54,8 +54,9 @@ if (-not $app) {
 $webApp = Get-AzWebApp -ResourceGroupName $selectedResourceGroup | Where-Object { $_.Name -like "todoapp-webapp-web-*" } | Select-Object -First 1
 
 if ($webApp) {
-    #Set the reply URL
-    Set-AzADApplication -ObjectId $app.Id -ReplyUrls "https://$($webApp.DefaultHostName)/getAToken"
+    #Set the reply URLs for the Azure AD Application
+    Set-AzADApplication -ObjectId $app.Id -ReplyUrls @("https://$($webApp.DefaultHostName)/getAToken", "http://localhost:5000/getAToken")
+    
 } else {
     # Write-Error "No web app found in the resource group $selectedResourceGroup that begins with 'todoapp-webapp-web-'"
 }

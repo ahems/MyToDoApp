@@ -1,6 +1,7 @@
 import os
 import json
 from re import S
+from httpx import get
 import identity.web
 import redis
 import secrets
@@ -15,31 +16,26 @@ from priority import Priority
 from context_processors import inject_current_date
 from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
+from azure.identity import ManagedIdentityCredential
 from azure.keyvault.secrets import SecretClient
 from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry import trace
 from logging import INFO, getLogger
 load_dotenv()
 
-# Configure OpenTelemetry to use Azure Monitor with the 
-# APPLICATIONINSIGHTS_CONNECTION_STRING environment variable.
-configure_azure_monitor(logger_name="my_todoapp_logger",)
-logger = getLogger("my_todoapp_logger")
-logger.setLevel(INFO)
-
 app = Flask(__name__)
-
-# No Entra ID auth - connection_string = f"mssql+pyodbc://{sql_user_name}:{sql_password}@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+18+for+SQL+Server"
-# Entra ID auth - connection_string = f"mssql+pyodbc://@{azure_sql_server}:{azure_sql_port}/todo?driver=ODBC+Driver+18+for+SQL+Server;Authentication=ActiveDirectoryMsi;"
-driver="{ODBC Driver 18 for SQL Server}"
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
 AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
-IS_LOCALHOST=os.environ.get("IS_LOCALHOST");
+IS_LOCALHOST = os.environ.get("IS_LOCALHOST", "false").lower() == "true"
+
+if IS_LOCALHOST:
+    credential = DefaultAzureCredential()
+else:
+    credential = ManagedIdentityCredential()
 
 if AZURE_CLIENT_ID:
     print('Using Managed Identity to access Key Vault')
-    credential = DefaultAzureCredential()
     key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
     client = SecretClient(vault_url=key_vault_uri, credential=credential)
     AUTHORITY=client.get_secret("AUTHORITY").value;
@@ -57,6 +53,14 @@ else:
 api_url = os.environ.get("API_URL");
 if not api_url:
     raise ValueError("API_URL environment variable is not set")
+
+app_insights_connection_string = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
+if not app_insights_connection_string:
+    raise ValueError("APPLICATIONINSIGHTS_CONNECTION_STRING environment variable is not set.")
+
+configure_azure_monitor(logger_name="my_todoapp_logger",connection_string=app_insights_connection_string,credential=credential)
+logger = getLogger("my_todoapp_logger")
+logger.setLevel(INFO)
 
 # Configure Session Storage
 if REDIS_CONNECTION_STRING:
@@ -84,36 +88,20 @@ auth = identity.web.Auth(
     client_credential=CLIENTSECRET,
 )
 
-# Use local database if Azure SQL server is not configured
-connection_string = os.environ.get("DATABASE_CONNECTION_STRING")
-
-if not connection_string:
-    print('DATABASE_CONNECTION_STRING environment variable missing, Using local SQLLite database')
-    basedir = os.path.abspath(os.path.dirname(__file__))   # Get the directory of the this file
-    print('Base directory:', basedir)
-    todo_file = os.path.join(basedir, 'todo_list.txt')     # Create the path to the to-do list file using the directory
-    app.config["SQLALCHEMY_DATABASE_URI"] = 'sqlite:///' + os.path.join(basedir, 'todos.db')
-else:
-    app.config["SQLALCHEMY_DATABASE_URI"] = connection_string
-
-print('Initializing App')
-db.init_app(app)
-print('App Initialized')
-
 @app.context_processor
 def inject_common_variables():
     return inject_current_date()
 
-print('Initializing Database')
-with app.app_context():
-    db.create_all()
-print('Database Initialized')
-
 @app.before_request
 def load_data_to_session():
 
+    oid = session.get("oid")
+    
+    if not oid:
+        return
+    
     global api_url
-    print("Loading data from API for OID: ", session.get("oid"))
+    print("Loading existing ToDo's from API for OID: ", oid)
 
     headers = {
         "Content-Type": "application/json",
@@ -122,7 +110,7 @@ def load_data_to_session():
 
     query = f"""
     {{
-        todos(filter: {{ oid: {{ eq: "{session.get("oid")}" }} }}) {{
+        todos(filter: {{ oid: {{ eq: "{oid}" }} }}) {{
                 items {{
                     id
                     name
@@ -150,7 +138,6 @@ def load_data_to_session():
         print("Failed to load data from API -" + response.text)
         session["todos"] = null
 
-    session["todos"] =todos 
     session["todo"] =None
     session["TabEnum"] = Tab
     session["PriorityEnum"] = Priority
@@ -174,12 +161,6 @@ def add_todo():
 
     global api_url
 
-    #todo = Todo(
-    #    name=request.form["todo"]
-    #)
-    #todo.oid = session.get("oid")
-    #db.session.add(todo)
-    #db.session.commit()
     print("Adding TODO: User OID: ", session.get("oid"))
 
     mutation = """
@@ -215,7 +196,9 @@ def add_todo():
         # Success handling, redirect to index
         return redirect(url_for('index'))
     else:
-        return "An error occurred", 500
+        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        logger.error(f'An error occurred: {error_message}')
+        return f'An error occurred: {error_message}', 500
 
 # Details of ToDo Item
 @app.route('/details/<int:id>', methods=['GET'])
@@ -224,44 +207,15 @@ def details(id):
     if not auth.get_user():
         return redirect(url_for("login"))
     
-    # todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
-
-    query = """
-        query Todo_by_pk($id: Int!) {
-            todo_by_pk(id: $id) {
-                id
-                name
-                recommendations_json
-                notes
-                priority
-                completed
-                due_date
-                oid
-            }
-        }
-    """
-    variables = {"id": id}
-
-    headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {session.get("token")}'
-    }
-
-    response = requests.post(api_url, json={'query': query, 'variables': variables}, headers=headers)
+    global api_url
     
-    # Check if the request was successful
-    if response.status_code == 200:
-        # Extract the data from the response
-        todo = response.json().get("data", {}).get("todo_by_pk", None)
-    else:
-        print("Failed to load data from API -" + response.text)
+    todo = get_todo_by_id(id, session.get("token"), api_url)
 
     if todo is None:
         return redirect(url_for('index'))
     
     session["selectedTab"] =Tab.DETAILS
-    session["todos"] =Todo.query.filter_by(oid=session.get("oid")).all()
-    session["todo"] =todo
+    session["todo"] = todo
     
     return render_template('index.html')
 
@@ -272,14 +226,16 @@ def edit(id):
     if not auth.get_user():
         return redirect(url_for("login"))
     
-    todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+    global api_url
+    
+    todo = get_todo_by_id(id, session.get("token"), api_url)
+
     if todo is None:
         return redirect(url_for('index'))
-
-    session["selectedTab"] =Tab.EDIT
-    session["todos"] =Todo.query.filter_by(oid=session.get("oid")).all()
+    
     session["todo"] =todo
-
+    session["selectedTab"] =Tab.EDIT
+    
     return render_template('index.html')
 
 # Save existing To Do Item
@@ -301,28 +257,51 @@ def update_todo(id):
     priority=request.form.get('priority')
     completed=request.form.get('completed')
 
-    todo = db.session.query(Todo).filter_by(id=id,oid=session.get("oid")).first()
-    if todo != None:
-        todo.name = name
+    # Prepare the GraphQL mutation
+    mutation = """
+    mutation UpdateTodo($id: Int!, $name: String!, $due_date: String, $notes: String, $priority: Int, $completed: Boolean) {
+        updatetodo(id: $id, item: {
+            name: $name,
+            due_date: $due_date,
+            notes: $notes,
+            priority: $priority,
+            completed: $completed
+        }) {
+            id
+            name
+            due_date
+            notes
+            priority
+            completed
+        }
+    }
+    """
 
-        if due_date != "None":
-            todo.due_date = due_date
+    # Prepare the variables
+    variables = {
+        "id": id,
+        "name": name,
+        "due_date": due_date if due_date != "None" else None,
+        "notes": notes,
+        "priority": int(priority) if priority is not None else None,
+        "completed": completed == "on"
+    }
 
-        if notes != None:
-            todo.notes = notes
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {session.get("token")}'
+    }
 
-        if priority != None:
-            todo.priority = int(priority) 
+    # Send the request
+    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
 
-        if completed == None:
-            todo.completed = False
-        elif completed == "on":
-            todo.completed = True
-    #
-    db.session.add(todo)
-    db.session.commit()
-    #
-    return redirect(url_for('index'))
+    # Check for errors or handle the response as needed
+    if response.status_code == 200:
+        return redirect(url_for('index'))
+    else:
+        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        logger.error(f'An error occurred: {error_message}')
+        return f'An error occurred: {error_message}', 500
 
 
 # Delete a ToDo
@@ -331,16 +310,37 @@ def remove_todo(id):
 
     if not auth.get_user():
         return redirect(url_for("login"))
-    
-    todo = Todo.query.filter_by(id=id,oid=session.get("oid")).first()
-    if todo is None:
+
+    # Prepare the GraphQL mutation
+    mutation = """
+    mutation RemoveTodo($id: Int!) {
+        deletetodo(id: $id) {
+            id
+        }
+    }
+    """
+
+    # Prepare the variables
+    variables = {
+        "id": id
+    }
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {session.get("token")}'
+    }
+
+    # Send the request
+    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
+
+    # Check for errors or handle the response as needed
+    if response.status_code == 200:
+        session["selectedTab"] = Tab.NONE
         return redirect(url_for('index'))
-
-    session["selectedTab"] =Tab.NONE
-    db.session.delete(todo)
-    db.session.commit()
-
-    return redirect(url_for('index'))
+    else:
+        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        logger.error(f'An error occurred: {error_message}')
+        return f'An error occurred: {error_message}', 500
 
 # Show AI recommendations
 @app.route('/recommend/<int:id>', methods=['GET'])
@@ -350,37 +350,64 @@ async def recommend(id, refresh=False):
     if not auth.get_user():
         return redirect(url_for("login"))
 
-    session["selectedTab"] =Tab.RECOMMENDATIONS
+    global api_url
+    session["selectedTab"] = Tab.RECOMMENDATIONS
     recommendation_engine = RecommendationEngine()
-    session["todo"] =db.session.query(Todo).filter_by(id=id,oid=session.get("oid")).first()
+    
+    todo = get_todo_by_id(id, session.get("token"), api_url)
+
+    if todo is None:
+        return redirect(url_for('index'))
+
+    session["todo"] = todo
 
     if session["todo"] and not refresh:
         try:
-            #attempt to load any saved recommendation from the DB
-            if session["todo"].recommendations_json is not None:
-                session["todo"].recommendations = json.loads(session["todo"].recommendations_json)
+            # Attempt to load any saved recommendation from the API response
+            if session["todo"].get('recommendations_json') is not None:
+                session["todo"]['recommendations'] = json.loads(session["todo"]['recommendations_json'])
                 return render_template('index.html')
         except ValueError as e:
             print("Error:", e)
 
     previous_links_str = None
     if refresh:
-        session["todo"].recommendations = json.loads(session["todo"].recommendations_json)
+        session["todo"]['recommendations'] = json.loads(session["todo"]['recommendations_json'])
         # Extract links
-        links = [item["link"] for item in session["todo"].recommendations]
+        links = [item["link"] for item in session["todo"]['recommendations']]
         # Convert list of links to a single string
         previous_links_str = ", ".join(links)
 
-    session["todo"].recommendations = await recommendation_engine.get_recommendations(session["todo"].name, previous_links_str)
-    
-    # Save the recommendations to the database
-    try:
-        session["todo"].recommendations_json = json.dumps(session["todo"].recommendations)
-        db.session.add(session["todo"])
-        db.session.commit()
-    except Exception as e:
-        print(f"Error adding and committing todo: {e}")
-        return
+    session["todo"]['recommendations'] = await recommendation_engine.get_recommendations(session["todo"]['name'], previous_links_str)
+
+    # Prepare the GraphQL mutation to save the recommendations
+    mutation = """
+    mutation UpdateTodoRecommendations($id: Int!, $recommendations_json: String!) {
+        updatetodo(id: $id, item: { recommendations_json: $recommendations_json}) {
+            id
+            recommendations_json
+        }
+    }
+    """
+
+    # Prepare the variables for the mutation
+    variables = {
+        "id": id,
+        "recommendations_json": json.dumps(session["todo"]['recommendations'])
+    }
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {session.get("token")}'
+    }
+
+    # Send the request to save the recommendations
+    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
+
+    if response.status_code != 200:
+        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        logger.error(f'An error occurred: {error_message}')
+        return f'An error occurred: {error_message}', 500
 
     return render_template('index.html')
 
@@ -390,17 +417,52 @@ def completed(id, complete):
     if not auth.get_user():
         return redirect(url_for("login"))
 
-    session["selectedTab"] =Tab.NONE
-    session["todo"] =Todo.query.filter_by(id=id,oid=session.get("oid")).first()
+    session["selectedTab"] = Tab.NONE
 
-    if (session["todo"] != None and complete == "true"):
-        session["todo"].completed = True
-    elif (session["todo"] != None and complete == "false"):
-        session["todo"].completed = False
-    #
-    db.session.add(session["todo"])
-    db.session.commit()
-    #
+    global api_url
+    
+    todo = get_todo_by_id(id, session.get("token"), api_url)
+
+    if todo is None:
+        return redirect(url_for('index'))
+    
+    session["todo"] = todo
+
+    # Update the completion status based on the 'complete' parameter
+    if complete == "true":
+        session["todo"]['completed'] = True
+    elif complete == "false":
+        session["todo"]['completed'] = False
+
+    # Prepare the GraphQL mutation to update the completion status
+    mutation = """
+    mutation UpdateTodoCompletion($id: Int!, $completed: Boolean!) {
+        updatetodo(id: $id, item: { completed: $completed }) {
+            id
+            completed
+        }
+    }
+    """
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {session.get("token")}'
+    }
+
+    # Prepare the variables for the mutation
+    variables = {
+        "id": id,
+        "completed": session["todo"]['completed']
+    }
+
+    # Send the request to update the completion status
+    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
+
+    if response.status_code != 200:
+        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        logger.error(f'An error occurred: {error_message}')
+        return f'An error occurred: {error_message}', 500
+
     return redirect(url_for('index'))
 
 @app.route("/login")
@@ -437,6 +499,45 @@ def logout():
     session.pop('todo', None)
 
     return redirect(auth.log_out(url_for("index", _external=True)))
+
+
+def get_todo_by_id(id, token, api_url):
+
+    # Prepare the GraphQL query to fetch the todo item
+    query = """
+        query Todo_by_pk($id: Int!) {
+            todo_by_pk(id: $id) {
+                id
+                name
+                recommendations_json
+                notes
+                priority
+                completed
+                due_date
+                oid
+            }
+        }
+    """
+    variables = {"id": id}
+
+    headers = {
+        'Content-Type': 'application/json',
+        'Authorization': f'Bearer {session.get("token")}'
+    }
+
+    # Send the request to fetch the todo item
+    response = requests.post(api_url, json={'query': query, 'variables': variables}, headers=headers)
+
+    if response.status_code == 200:
+        todo = response.json().get('data', {}).get('todo_by_pk')
+        if todo:
+            return todo
+        else:
+            return "Todo item not found", 404
+    else:
+        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        logger.error(f'An error occurred: {error_message}')
+        return f'An error occurred: {error_message}', 500
 
 if __name__ == "__main__":
     app.secret_key = secrets.token_hex(8)

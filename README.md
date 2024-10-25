@@ -12,9 +12,9 @@ We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Fol
   * EMAIL - your accounts' email address in Entra ID, used to set the admin of the database. If you need to you can get this value by running (az account list | ConvertFrom-Json).user[1].name
   * OBJECT_ID - your accounts' ObjectID in Entra ID. Get this value using:
   
-  ```azurecli
-  az ad user list --upn (az account list | ConvertFrom-Json).user[1].name) | ConvertFrom-Json).id
-  ```
+```azurecli
+az account show --query id -o tsv
+```
 
 * Download the code from your cloned repo to your local machine
 * (Optional) If your Azure subscription is new, run the "/scripts/Register-Resource-Providers.ps1" Powershell script from a Terminal in VS Code
@@ -50,7 +50,7 @@ This will give your User Managed Identity access to the ToDo Database.
 
 ```sql
 CREATE TABLE ToDo (
-    id INT PRIMARY KEY,
+    id INT IDENTITY(1,1) PRIMARY KEY,
     name NVARCHAR(100) NOT NULL,
     recommendations_json JSON,
     notes NVARCHAR(100),

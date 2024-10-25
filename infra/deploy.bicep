@@ -96,7 +96,11 @@ module appinsights 'modules/applicationinsights.bicep' = {
   params: {
     appName: appInsightsName
     workspaceName: workspaceName
+    identityName: identityName
   }
+  dependsOn: [
+    identity
+  ]
 }
 
 module buildTaskForWeb 'modules/task.bicep' = {
