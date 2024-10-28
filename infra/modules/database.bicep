@@ -1,12 +1,9 @@
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
 param location string = resourceGroup().location
-param sqlAdminUsername string = uniqueString(newGuid())
 param aadAdminLogin string
 param aadAdminObjectId string
 param tenantId string = subscription().tenantId
-@secure()
-param sqlAdminPassword string = newGuid()
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 
 var sqlDatabaseName = 'todo'
@@ -19,8 +16,6 @@ resource sqlServer 'Microsoft.Sql/servers@2021-02-01-preview' = {
   name: sqlServerName
   location: location
   properties: {
-    administratorLogin: sqlAdminUsername
-    administratorLoginPassword: sqlAdminPassword
     version: '12.0'
     minimalTlsVersion: '1.2'
     publicNetworkAccess: 'Enabled'
@@ -79,26 +74,6 @@ resource sqlDatabase 'Microsoft.Sql/servers/databases@2021-02-01-preview' = {
 
 resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
   name: keyVaultName
-}
-
-resource admin 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
-  parent: keyVault
-  name: 'AZURESQLUSER'
-  properties: {
-    value: sqlAdminUsername
-    contentType: 'text/plain'
-  }
-  dependsOn: [sqlServer]
-}
-
-resource password 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
-  parent: keyVault
-  name: 'AZURESQLPASSWORD'
-  properties: {
-    value: sqlAdminPassword
-    contentType: 'text/plain'
-  }
-  dependsOn: [sqlServer]
 }
 
 resource server 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {

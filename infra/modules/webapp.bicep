@@ -6,16 +6,10 @@ param location string = resourceGroup().location
 param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param appImageNameAndVersion string = 'todoapp:latest'
-param azureSqlPort string = '1433'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 
 var appImage = '${containerRegistryName}.azurecr.io/${appImageNameAndVersion}'
-var DATABASE_CONNECTION_STRING = 'mssql+pyodbc://@${sqlServer.properties.fullyQualifiedDomainName}:${azureSqlPort}/todo?driver=ODBC+Driver+18+for+SQL+Server;Authentication=ActiveDirectoryMsi;User Id=${azidentity.properties.clientId}'
-
-resource sqlServer 'Microsoft.Sql/servers@2021-02-01-preview' existing = {
-  name: sqlServerName
-}
 
 resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
   name: identityName
@@ -72,10 +66,6 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
         {
           name: 'DOCKER_REGISTRY_SERVER_PASSWORD'
           value: acr.properties.adminUserEnabled ? acr.listCredentials().passwords[0].value : ''
-        }
-        {
-          name: 'DATABASE_CONNECTION_STRING'
-          value: DATABASE_CONNECTION_STRING
         }
         {
           name: 'WEBSITES_PORT'

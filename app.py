@@ -31,7 +31,7 @@ IS_LOCALHOST = os.environ.get("IS_LOCALHOST", "false").lower() == "true"
 if IS_LOCALHOST:
     credential = DefaultAzureCredential()
 else:
-    credential = ManagedIdentityCredential()
+    credential = ManagedIdentityCredential(client_id=AZURE_CLIENT_ID)
 
 if AZURE_CLIENT_ID:
     print('Using Managed Identity to access Key Vault')

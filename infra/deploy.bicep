@@ -165,7 +165,6 @@ module webapp  'modules/webapp.bicep' = {
   params: {
     keyVaultName:keyVaultName
     location: location
-    sqlServerName:sqlServerName
     appInsightsName:appInsightsName
     webAppName:webAppName
     apiAppURL:apiapp.outputs.apiAppURL
@@ -181,7 +180,6 @@ module webapp  'modules/webapp.bicep' = {
     keyvault
     appinsights
     identity
-    database
   ]
 }
 
