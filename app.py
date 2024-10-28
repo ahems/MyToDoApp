@@ -103,8 +103,9 @@ def load_data_to_session():
     print("Loading existing ToDo's from API for OID: ", oid)
 
     headers = {
-        "Content-Type": "application/json",
-        'Authorization': f'Bearer {session.get("token")}'
+        "Content-Type" : "application/json",
+        'Authorization' : f'Bearer {session.get("token")}',
+        'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
     query = f"""
@@ -186,8 +187,9 @@ def add_todo():
     }
 
     headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {session.get("token")}'
+        'Content-Type' : 'application/json',
+        'Authorization' : f'Bearer {session.get("token")}',
+        'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
     # Send the request
@@ -290,8 +292,9 @@ def update_todo(id):
     }
 
     headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {session.get("token")}'
+        'Content-Type' : 'application/json',
+        'Authorization' : f'Bearer {session.get("token")}',
+        'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
     # Send the request
@@ -328,8 +331,9 @@ def remove_todo(id):
     }
 
     headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {session.get("token")}'
+        'Content-Type' : 'application/json',
+        'Authorization' : f'Bearer {session.get("token")}',
+        'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
     # Send the request
@@ -399,8 +403,9 @@ async def recommend(id, refresh=False):
     }
 
     headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {session.get("token")}'
+        'Content-Type' : 'application/json',
+        'Authorization' : f'Bearer {session.get("token")}',
+        'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
     # Send the request to save the recommendations
@@ -447,8 +452,9 @@ def completed(id, complete):
     """
 
     headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {session.get("token")}'
+        'Content-Type' : 'application/json',
+        'Authorization' : f'Bearer {session.get("token")}',
+        'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
     # Prepare the variables for the mutation
@@ -523,8 +529,9 @@ def get_todo_by_id(id, token, api_url):
     variables = {"id": id}
 
     headers = {
-        'Content-Type': 'application/json',
-        'Authorization': f'Bearer {session.get("token")}'
+        'Content-Type' : 'application/json',
+        'Authorization' : f'Bearer {session.get("token")}',
+        'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
     # Send the request to fetch the todo item
