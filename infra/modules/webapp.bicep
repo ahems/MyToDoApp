@@ -1,4 +1,3 @@
-param sqlServerName string = 'todoapp-sql-${uniqueString(resourceGroup().id)}'
 param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
 param webAppName string = 'todoapp-webapp-web-${uniqueString(resourceGroup().id)}'
 param apiAppURL string = 'https://todoapp-webapp-api-${uniqueString(resourceGroup().id)}/graphql/'

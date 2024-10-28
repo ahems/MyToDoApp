@@ -151,9 +151,12 @@ def index():
         return redirect(url_for("login"))
     else:
         session["oid"] = auth.get_user().get("oid")
+        load_data_to_session()
         session["name"] = auth.get_user().get("name")
         session["token"] = auth.get_token_for_user(scope)['access_token']
-        return render_template("index.html")  
+        session["TabEnum"] = Tab
+        session["selectedTab"] =Tab.NONE
+        return render_template("index.html", appinsights_connection_string=app_insights_connection_string)
 
 @app.route("/add", methods=["POST"])
 def add_todo():
@@ -216,7 +219,7 @@ def details(id):
     session["selectedTab"] =Tab.DETAILS
     session["todo"] = todo
     
-    return render_template('index.html')
+    return render_template('index.html',appinsights_connection_string=app_insights_connection_string)
 
 # Edit a new ToDo
 @app.route('/edit/<int:id>', methods=['GET'])
@@ -235,7 +238,7 @@ def edit(id):
     session["todo"] =todo
     session["selectedTab"] =Tab.EDIT
     
-    return render_template('index.html')
+    return render_template('index.html',appinsights_connection_string=app_insights_connection_string)
 
 # Save existing To Do Item
 @app.route('/update/<int:id>', methods=['POST'])
@@ -365,7 +368,7 @@ async def recommend(id, refresh=False):
             # Attempt to load any saved recommendation from the API response
             if session["todo"].get('recommendations_json') is not None:
                 session["todo"]['recommendations'] = json.loads(session["todo"]['recommendations_json'])
-                return render_template('index.html')
+                return render_template('index.html', appinsights_connection_string=app_insights_connection_string)
         except ValueError as e:
             print("Error:", e)
 
@@ -408,7 +411,7 @@ async def recommend(id, refresh=False):
         logger.error(f'An error occurred: {error_message}')
         return f'An error occurred: {error_message}', 500
 
-    return render_template('index.html')
+    return render_template('index.html', appinsights_connection_string=app_insights_connection_string)
 
 @app.route('/completed/<int:id>/<complete>', methods=['GET'])
 def completed(id, complete):

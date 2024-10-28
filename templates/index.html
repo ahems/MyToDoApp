@@ -7,6 +7,10 @@
     <link rel="icon" type="image/x-icon" href="{{ url_for('static', filename='images/favicon.ico') }}">
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+     <!-- Application Insights JavaScript SDK -->
+     <script type="text/javascript">
+        !function(T,l,y){var S=T.location,k="script",D="instrumentationKey",C="ingestionendpoint",I="disableExceptionTracking",E="ai.device.",b="toLowerCase",w="crossOrigin",N="POST",e="appInsightsSDK",t=y.name||"appInsights";(y.name||T[e])&&(T[e]=t);var n=T[t]||function(d){var g=!1,f=!1,m={initialize:!0,queue:[],sv:"5",version:2,config:d};function v(e,t){var n={},a="Browser";return n[E+"id"]=a[b](),n[E+"type"]=a,n["ai.operation.name"]=S&&S.pathname||"_unknown_",o().queue.push(function(){i.track(n,e,t)}),n}function o(){return g||(g=T[k+"s"],g=g&&g.length?g[0]:T[k]),g}var i={config:m};function a(e){i[e]=function(){var t=arguments;i.queue.push(function(){i[e].apply(i,t)})}}var s=["Event","Exception","Metric","PageView","Trace","Dependency"];while(s.length)a("track"+s.pop());return a("setAuthenticatedUserContext"),a("clearAuthenticatedUserContext"),a("startTrackEvent"),a("stopTrackEvent"),a("startTrackPage"),a("stopTrackPage"),a("flush"),m.disableExceptionTracking||(s="onerror",a("_"+s),T[s]=function(e,t,n,a,i){var r=T[s];r&&r(e,t,n,a,i),v({error:e,message:e.message,url:t,lineNumber:n,columnNumber:a,stack:i})}),m[N]=function(e,t){var n=o();if(n){var a=T[k+"s"],i=a&&a.length?a[0]:T[k];i&&i.parentNode&&i.parentNode.insertBefore(n,i)}},m}(y);T[t]=n,n.queue&&0===n.queue.length&&n[N]({src:"https://js.monitor.azure.com/scripts/b/ai.2.min.js",w:w})}(window,document,{connectionString: "{{ appinsights_connection_string }}"});
+    </script>
 </head>
 <body>
     <br/>
