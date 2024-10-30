@@ -8,7 +8,7 @@ param apiImageNameAndVersion string = 'todoapi:latest'
 param azureSqlPort string = '1433'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
-
+param tenantId string = subscription().tenantId
 
 var apiImage = '${containerRegistryName}.azurecr.io/${apiImageNameAndVersion}'
 var DATABASE_CONNECTION_STRING = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},${azureSqlPort};Initial Catalog=todo;Authentication=Active Directory Default;User Id=${azidentity.properties.clientId}'
