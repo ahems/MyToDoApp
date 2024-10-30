@@ -6,9 +6,9 @@ RUN dotnet new tool-manifest
 
 RUN dotnet tool install Microsoft.DataApiBuilder
 
-RUN dotnet tool run dab -- init --database-type "mssql" --connection-string "@env('DATABASE_CONNECTION_STRING')"
+RUN dotnet tool run dab -- init --auth.provider "AzureAD" --auth.audience "@env('APPLICATION_ID')" --auth.issuer "@env('ISSUER')" --database-type "mssql" --connection-string "@env('DATABASE_CONNECTION_STRING')"
 
-RUN dotnet tool run dab -- add todo --source "dbo.todo" --permissions "[MyToDoApp]:*"
+RUN dotnet tool run dab -- add todo --source "dbo.todo" --permissions "[authenticated]:*"
 
 FROM mcr.microsoft.com/azure-databases/data-api-builder
 

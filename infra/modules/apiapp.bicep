@@ -58,6 +58,14 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
           value: DATABASE_CONNECTION_STRING
         }
         {
+          name: 'APPLICATION_ID'
+          value: azidentity.properties.clientId
+        }
+        {
+          name: 'ISSUER'
+          value: 'https://login.microsoftonline.com/${tenantId}/v2.0'
+        }
+        {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
           value: appInsights.properties.ConnectionString
         }

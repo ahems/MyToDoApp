@@ -528,10 +528,25 @@ def get_todo_by_id(id, token, api_url):
     """
     variables = {"id": id}
 
+    # Obtain the access token from the Azure Instance Metadata Service (IMDS)
+    token_response = requests.get(
+        "http://169.254.169.254/metadata/identity/oauth2/token",
+        params={
+            "api-version": "2019-08-01",
+            "resource": "https://management.azure.com/",
+            "client_id": os.environ.get("AZURE_CLIENT_ID")
+        },
+        headers={"Metadata": "true"}
+    )
+
+    if token_response.status_code == 200:
+        access_token = token_response.json().get("access_token")
+    else:
+        raise Exception("Failed to obtain access token from IMDS")
+
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f'Bearer {session.get("token")}',
-        'X-MS-API-ROLE' : 'MyToDoApp'
+        'Authorization' : f'Bearer {access_token}'
     }
 
     # Send the request to fetch the todo item
