@@ -63,7 +63,7 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
         }
         {
           name: 'ISSUER'
-          value: 'https://login.microsoftonline.com/${tenantId}/v2.0'
+          value: '${environment().authentication.loginEndpoint}${tenantId}/v2.0'
         }
         {
           name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
