@@ -41,13 +41,19 @@ if AZURE_CLIENT_ID:
     CLIENTID=client.get_secret("CLIENTID").value;
     CLIENTSECRET=client.get_secret("CLIENTSECRET").value;
     REDIS_CONNECTION_STRING=client.get_secret("REDIS-CONNECTION-STRING").value;
-    redirect_uri = client.get_secret("REDIRECT-URI").value;
 else:
     print('Using Environment Variables');
     AUTHORITY=os.environ.get("AUTHORITY");
     CLIENTID=os.environ.get("CLIENTID");
     CLIENTSECRET=os.environ.get("CLIENTSECRET");
     REDIS_CONNECTION_STRING=os.environ.get("REDIS_CONNECTION_STRING");
+
+redirect_uri = os.environ.get("REDIRECT_URI");
+if not redirect_uri:
+    print('Using Key Vault for REDIRECT-URI');
+    redirect_uri = client.get_secret("REDIRECT-URI").value;
+    if not redirect_uri:
+        raise ValueError("REDIRECT-URI variable not in KeyVault or Environment")
 
 api_url = os.environ.get("API_URL");
 if not api_url:

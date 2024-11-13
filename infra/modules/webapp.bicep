@@ -74,6 +74,10 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'API_URL'
           value: apiAppURL
         }
+        {
+          name: 'REDIRECT_URI'
+          value: 'https://${webAppName}.azurewebsites.net/getAToken'
+        }
       ]
       linuxFxVersion: 'DOCKER|${appImage}'
     }
