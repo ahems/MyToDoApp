@@ -9,6 +9,7 @@ param azureSqlPort string = '1433'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param tenantId string = subscription().tenantId
+param acrWebhookName string = 'todoapiwebhook'
 
 var apiImage = '${containerRegistryName}.azurecr.io/${apiImageNameAndVersion}'
 var DATABASE_CONNECTION_STRING = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},${azureSqlPort};Initial Catalog=todo;Authentication=Active Directory Default;User Id=${azidentity.properties.clientId}'
@@ -88,6 +89,20 @@ resource apiApp 'Microsoft.Web/sites@2022-09-01' = {
       ]
       linuxFxVersion: 'DOCKER|${apiImage}'
     }
+  }
+}
+
+resource acrWebhook 'Microsoft.ContainerRegistry/registries/webhooks@2020-11-01-preview' = {
+  name: acrWebhookName
+  parent: acr
+  location: location
+  properties: {
+    serviceUri: 'https://${apiApp.name}.scm.azurewebsites.net/docker/hook'
+    actions: [
+      'push'
+    ]
+    status: 'enabled'
+    scope: apiImageNameAndVersion
   }
 }
 

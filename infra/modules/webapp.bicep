@@ -7,6 +7,7 @@ param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)
 param appImageNameAndVersion string = 'todoapp:latest'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
+param acrWebhookName string = 'todoappwebhook'
 
 var appImage = '${containerRegistryName}.azurecr.io/${appImageNameAndVersion}'
 
@@ -81,6 +82,20 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
       ]
       linuxFxVersion: 'DOCKER|${appImage}'
     }
+  }
+}
+
+resource acrWebhook 'Microsoft.ContainerRegistry/registries/webhooks@2020-11-01-preview' = {
+  name: acrWebhookName
+  parent: acr
+  location: location
+  properties: {
+    serviceUri: 'https://${webApp.name}.scm.azurewebsites.net/docker/hook'
+    actions: [
+      'push'
+    ]
+    status: 'enabled'
+    scope: appImageNameAndVersion
   }
 }
 
