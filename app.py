@@ -100,10 +100,10 @@ def inject_common_variables():
 @app.before_request
 def load_data_to_session():
 
-    oid = session.get("oid")
+    oid = auth.get_user().get("oid")
     
     if not oid:
-        return
+        raise ValueError("Failed to get OID from the user")
     
     global api_url
     print("Loading existing ToDo's from API for OID: ", oid)
@@ -157,7 +157,6 @@ def index():
     if not auth.get_user():
         return redirect(url_for("login"))
     else:
-        session["oid"] = auth.get_user().get("oid")
         load_data_to_session()
         session["name"] = auth.get_user().get("name")
         session["token"] = auth.get_token_for_user(scope)['access_token']
@@ -170,7 +169,7 @@ def add_todo():
 
     global api_url
 
-    print("Adding TODO: User OID: ", session.get("oid"))
+    print("Adding TODO: User OID: ", auth.get_user().get("oid"))
 
     mutation = """
     mutation Createtodo($name: String!, $oid: String!) {
@@ -189,7 +188,7 @@ def add_todo():
     # Prepare the variables
     variables = {
         "name": request.form["todo"],
-        "oid": session.get("oid")
+        "oid": auth.get_user().get("oid")
     }
 
     headers = {
