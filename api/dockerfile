@@ -8,7 +8,9 @@ RUN dotnet tool install Microsoft.DataApiBuilder
 
 RUN dotnet tool run dab -- init --database-type "mssql" --connection-string "@env('DATABASE_CONNECTION_STRING')"
 
-RUN dotnet tool run dab -- add Product --source "dbo.ToDo" --permissions "anonymous:*"
+RUN dotnet tool run dab -- add todo --source "dbo.ToDo" --permissions "anonymous:*"
+
+RUN dotnet tool run dab -- add-telemetry --app-insights-enabled true --app-insights-conn-string "@env('APPLICATIONINSIGHTS_CONNECTION_STRING')"
 
 FROM mcr.microsoft.com/azure-databases/data-api-builder
 
