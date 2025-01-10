@@ -1,14 +1,24 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 
+ARG USE_AUTH
+
 WORKDIR /config
 
 RUN dotnet new tool-manifest
 
 RUN dotnet tool install Microsoft.DataApiBuilder
 
-RUN dotnet tool run dab -- init --database-type "mssql" --connection-string "@env('DATABASE_CONNECTION_STRING')"
+RUN \
+if [ "${USE_AUTH}" = "true" ] ;\
+then dotnet tool run dab -- init --auth.provider "StaticWebApps" --database-type "mssql" --connection-string "@env('DATABASE_CONNECTION_STRING')"; \
+else dotnet tool run dab -- init --database-type "mssql" --connection-string "@env('DATABASE_CONNECTION_STRING')"; \
+fi
 
-RUN dotnet tool run dab -- add todo --source "dbo.ToDo" --permissions "anonymous:*"
+RUN \
+if [ "${USE_AUTH}" = "true" ] ;\
+then dotnet tool run dab -- add todo --source "dbo.ToDo" --permissions "authenticated:*"; \
+else dotnet tool run dab -- add todo --source "dbo.ToDo" --permissions "anonymous:*"; \
+fi 
 
 RUN dotnet tool run dab -- add-telemetry --app-insights-enabled true --app-insights-conn-string "@env('APPLICATIONINSIGHTS_CONNECTION_STRING')"
 

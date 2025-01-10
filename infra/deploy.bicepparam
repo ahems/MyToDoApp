@@ -1,6 +1,8 @@
 using 'deploy.bicep'
 
-param aadAdminLogin = readEnvironmentVariable('EMAIL')
+param aadAdminLogin = readEnvironmentVariable('NAME')
 param aadAdminObjectId = readEnvironmentVariable('OBJECT_ID')
-param repositoryUrl = readEnvironmentVariable('repositoryUrl')
-param gitAccessToken = readEnvironmentVariable('gitAccessToken')
+param webAppClientSecret = readEnvironmentVariable('CLIENT_SECRET')
+param webAppClientId = readEnvironmentVariable('CLIENT_ID')
+param restoreOpenAi = false
+param useFreeLimit = true

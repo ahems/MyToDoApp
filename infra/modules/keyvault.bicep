@@ -2,11 +2,12 @@ param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 
-resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: identityName
 }
 
-resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' = {
+// Create Key Vault
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
   name: keyVaultName
   location: location
   properties: {
@@ -21,11 +22,12 @@ resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' = {
   }
 }
 
-// Apply Key Vault Secrets User (this might fail if the identity has just been created - retry if it does)
-resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
+// Apply Key Vault Secrets User Access Policy
+resource keyVaultRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(keyVault.id)
   scope: keyVault
   properties: {
+    principalType: 'ServicePrincipal'
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '4633458b-17de-408a-b874-0445c86b69e6')
     principalId: azidentity.properties.principalId
   }

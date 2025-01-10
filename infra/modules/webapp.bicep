@@ -1,21 +1,24 @@
 param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
 param webAppName string = 'todoapp-webapp-web-${uniqueString(resourceGroup().id)}'
-param apiAppURL string = 'https://todoapp-webapp-api-${uniqueString(resourceGroup().id)}/graphql/'
+param apiAppURL string = 'https://todoapp-webapp-api-${uniqueString(resourceGroup().id)}.azurewebsites.net/graphql/'
 param location string = resourceGroup().location
 param containerRegistryName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param appImageNameAndVersion string = 'todoapp:latest'
 param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
-param acrWebhookName string = 'todoappwebhook'
 
 var appImage = '${containerRegistryName}.azurecr.io/${appImageNameAndVersion}'
 
-resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: identityName
 }
 
-resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' existing = {
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
+  name: keyVaultName
+}
+
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: containerRegistryName
 }
 
@@ -23,11 +26,11 @@ resource appInsights 'Microsoft.Insights/components@2020-02-02' existing = {
   name: appInsightsName
 }
 
-resource appServicePlan 'Microsoft.Web/serverfarms@2020-12-01' existing = {
+resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' existing = {
   name: appServicePlanName
 }
 
-resource webApp 'Microsoft.Web/sites@2022-09-01' = {
+resource webApp 'Microsoft.Web/sites@2024-04-01' = {
   name: webAppName
   location: location
   identity: {
@@ -41,8 +44,12 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
     serverFarmId: appServicePlan.id
     siteConfig: {
       acrUseManagedIdentityCreds: !acr.properties.adminUserEnabled
-      acrUserManagedIdentityID: azidentity.properties.clientId 
+      acrUserManagedIdentityID: azidentity.properties.clientId
       appSettings: [
+        {
+          name: 'API_URL'
+          value: apiAppURL
+        }
         {
           name:'KEY_VAULT_NAME'
           value: keyVaultName
@@ -56,8 +63,12 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
           value: appInsights.properties.ConnectionString
         }
         {
+          name: 'ApplicationInsightsAgent_EXTENSION_VERSION'
+          value: '~3'
+        }
+        {
           name: 'DOCKER_REGISTRY_SERVER_URL'
-          value: 'https://${acr.properties.loginServer}'
+          value: acr.properties.loginServer
         }
         {
           name: 'DOCKER_REGISTRY_SERVER_USERNAME'
@@ -67,39 +78,15 @@ resource webApp 'Microsoft.Web/sites@2022-09-01' = {
           name: 'DOCKER_REGISTRY_SERVER_PASSWORD'
           value: acr.properties.adminUserEnabled ? acr.listCredentials().passwords[0].value : ''
         }
-        {
-          name: 'WEBSITES_PORT'
-          value: '80'
-        }
-        {
-          name: 'API_URL'
-          value: apiAppURL
-        }
-        {
-          name: 'REDIRECT_URI'
-          value: 'https://${webAppName}.azurewebsites.net/getAToken'
-        }
       ]
       linuxFxVersion: 'DOCKER|${appImage}'
-    }
+      publicNetworkAccess:'Enabled'
+      healthCheckPath: '/login' // Health check path for the Web Site
+    }    
   }
 }
 
-resource acrWebhook 'Microsoft.ContainerRegistry/registries/webhooks@2020-11-01-preview' = {
-  name: acrWebhookName
-  parent: acr
-  location: location
-  properties: {
-    serviceUri: 'https://${webApp.name}.scm.azurewebsites.net/docker/hook'
-    actions: [
-      'push'
-    ]
-    status: 'enabled'
-    scope: appImageNameAndVersion
-  }
-}
-
-resource log 'Microsoft.Web/sites/config@2020-12-01' = {
+resource log 'Microsoft.Web/sites/config@2024-04-01' = {
   name: 'logs'
   parent: webApp
   properties: {
@@ -117,3 +104,14 @@ resource log 'Microsoft.Web/sites/config@2020-12-01' = {
     }
   }
 }
+
+resource redirecturi 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
+  parent: keyVault
+  name: 'REDIRECT-URI'
+  properties: {
+    value: 'https://${webApp.properties.defaultHostName}/getAToken'
+    contentType: 'text/plain'
+  }
+}
+
+output outgoingIpAddresses string[] = split(webApp.properties.outboundIpAddresses, ',')

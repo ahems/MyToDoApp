@@ -10,11 +10,11 @@ param aciImage string = '${containerRegistryName}.azurecr.io/${imageNameAndVersi
 param aciCpuCores int = 1
 param aciMemoryGb int = 1
 
-resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: identityName
 }
 
-resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' existing = {
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: containerRegistryName
 }
 

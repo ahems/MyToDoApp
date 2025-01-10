@@ -1,14 +1,16 @@
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param tenantId string = subscription().tenantId
+@description('The client ID of the web app registration, usedin the code to authenticate users.')
 param clientId string
 @secure()
+@description('The client secret of the web app registration, used in the code to authenticate users.')
 param clientSecret string
 
-resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-resource authoritySecret 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+resource authority 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'AUTHORITY'
   properties: {
@@ -17,7 +19,7 @@ resource authoritySecret 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   }
 }
 
-resource clientIdSecret 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+resource webAppClientId 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'CLIENTID'
   properties: {
@@ -26,7 +28,7 @@ resource clientIdSecret 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   }
 }
 
-resource authenicationIdSecret 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+resource webAppClientSecret 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'CLIENTSECRET'
   properties: {

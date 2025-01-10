@@ -10,7 +10,7 @@ param cognitiveservicesLocation string = 'canadaeast'
 param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}'
 param rgName string = resourceGroup().name
 param location string = resourceGroup().location
-param repositoryUrl string = 'https://github.com/ahems/MyToDoApp'
+param repositoryUrl string = 'https://github.com/ahems/MyToDoApp.git#main'
 param apiAppName string = 'todoapp-webapp-api-${uniqueString(resourceGroup().id)}'
 param webAppName string = 'todoapp-webapp-web-${uniqueString(resourceGroup().id)}'
 param apiImageNameAndVersion string = 'todoapi:latest'
@@ -20,8 +20,31 @@ param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id
 param adminUserEnabled bool = true
 param aadAdminLogin string
 param aadAdminObjectId string
+@description('Wether to use authorization on the API or not. If set to true, the API will be secured with Entra AD.')
+param useAuthorizationOnAPI bool = false
+@description('Wether to restore the OpenAI service or not. If set to true, the OpenAI service will be restored from a soft-deleted backup. Use this only if you have previously deleted the OpenAI service created with this script, as you will need to restore it.')
+param restoreOpenAi bool
+param tenantId string = subscription().tenantId
+param useFreeLimit bool = true
+param webAppClientId string
 @secure()
-param gitAccessToken string
+param webAppClientSecret string
+
+var apiAppURL = 'https://${apiAppName}.azurewebsites.net/graphql/'
+
+module authentication 'modules/authentication.bicep' = {
+  scope: resourceGroup(rgName)
+  name: 'Deploy-Authentication'
+  params: {
+    keyVaultName: keyVaultName
+    tenantId: tenantId
+    clientId: webAppClientId
+    clientSecret: webAppClientSecret
+  }
+  dependsOn: [
+    keyvault
+  ]
+}
 
 module redis 'modules/redis.bicep' = {
   scope: resourceGroup(rgName)
@@ -33,6 +56,7 @@ module redis 'modules/redis.bicep' = {
   }
   dependsOn: [
     keyvault
+    identity
   ]
 }
 
@@ -43,6 +67,7 @@ module cognitiveservices 'modules/openai.bicep' = {
     name: cognitiveservicesname
     location: cognitiveservicesLocation
     customSubDomainName: cognitiveservicesname
+    restoreOpenAi: restoreOpenAi
   }
   dependsOn: [
     keyvault
@@ -71,7 +96,8 @@ module database 'modules/database.bicep' = {
     aadAdminLogin: aadAdminLogin
     aadAdminObjectId: aadAdminObjectId
     location: location
-    identityName: identityName    
+    identityName: identityName
+    useFreeLimit: useFreeLimit
   }
   dependsOn: [
     keyvault
@@ -123,11 +149,10 @@ module buildTaskForWeb 'modules/task.bicep' = {
     acrName: acrName
     location: location
     acrTaskName: 'buildWebApp'
-    contextAccessToken: gitAccessToken
-    contextPath: './'
-    repositoryUrl: repositoryUrl
+    contextPath: repositoryUrl
     repoName: 'todoapp'
     taskBuildVersionTag: 'latest'
+    useAuthorization: false
   }
   dependsOn: [
     acr
@@ -140,11 +165,10 @@ module buildTaskForAPI 'modules/task.bicep' = {
     acrName: acrName
     location: location
     acrTaskName: 'buildAPIApp'
-    contextAccessToken: gitAccessToken
-    contextPath: './api'
-    repositoryUrl: repositoryUrl
+    contextPath: '${repositoryUrl}:api'
     repoName: 'todoapi'
     taskBuildVersionTag: 'latest'
+    useAuthorization: useAuthorizationOnAPI
   }
   dependsOn: [
     acr
@@ -167,40 +191,71 @@ module webapp  'modules/webapp.bicep' = {
     location: location
     appInsightsName:appInsightsName
     webAppName:webAppName
-    apiAppURL:apiapp.outputs.apiAppURL
     containerRegistryName:acrName
     identityName:identityName
     appImageNameAndVersion:appImageNameAndVersion
     appServicePlanName:appServicePlanName
+    apiAppURL:apiAppURL
   }
   dependsOn: [
     appServicePlan
-    apiapp
-    acr
     keyvault
     appinsights
     identity
   ]
 }
 
-module apiapp  'modules/apiapp.bicep' = {
+module continuousDeploymentForWebApp 'modules/continuous-deployment.bicep' = {
+  name: 'Configure-CD-For-${webAppName}'
+  params: {
+    webAppName: webAppName
+    containerRegistryName: acrName
+    identityName: identityName
+    imageNameAndVersion: appImageNameAndVersion
+    acrWebhookName: 'todoappwebhook'
+  }
+  dependsOn: [
+    apiapp
+    acr
+    identity
+  ]
+}
+
+module apiapp 'modules/apiapp.bicep' = {
   name: 'Deploy-API-App'
   params: {
     location: location
     sqlServerName:sqlServerName
     appInsightsName:appInsightsName
-    webAppName:apiAppName
+    apiAppName:apiAppName
     containerRegistryName:acrName
     identityName:identityName
     apiImageNameAndVersion:apiImageNameAndVersion
     appServicePlanName:appServicePlanName
+    authEnabled: useAuthorizationOnAPI
+    allowedIpAddresses: webapp.outputs.outgoingIpAddresses
   }
   dependsOn: [
     database
     appServicePlan
-    acr
     keyvault
     appinsights
+    identity
+  ]
+}
+
+module continuousDeploymentForApiApp 'modules/continuous-deployment.bicep' = {
+  name: 'Configure-CD-For-${apiAppName}'
+  params: {
+    webAppName: apiAppName
+    containerRegistryName: acrName
+    identityName: identityName
+    imageNameAndVersion: apiImageNameAndVersion
+    acrWebhookName: 'todoapiwebhook'
+  }
+  dependsOn: [
+    apiapp
+    acr
     identity
   ]
 }

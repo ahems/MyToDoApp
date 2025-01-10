@@ -9,34 +9,17 @@ if (-not (Get-Module -ListAvailable -Name Az)) {
     Install-Module -Name Az -AllowClobber -Scope CurrentUser
 }
 
+if (-not (Get-Module -ListAvailable -Name Microsoft.Graph)) {
+    Install-Module Microsoft.Graph -Scope CurrentUser
+}
+
 # Variables
 $appName = "MyToDoApp"
 
 # Login to Azure
 Connect-AzAccount
 
-# Retrieve the list of resource groups
-$resourceGroups = Get-AzResourceGroup
-
-# Display the list of resource groups with numbers
-Write-Output "Available Resource Groups:"
-for ($i = 0; $i -lt $resourceGroups.Count; $i++) {
-    Write-Output "$($i + 1). $($resourceGroups[$i].ResourceGroupName)"
-}
-
-# Prompt the user to select a resource group by entering a number
-$selection = Read-Host "Enter the number of the resource group you want to select"
-
-# Validate the input
-if ($selection -match '^\d+$' -and $selection -gt 0 -and $selection -le $resourceGroups.Count) {
-    $selectedResourceGroup = $resourceGroups[$selection - 1].ResourceGroupName
-    Write-Output "You selected: $selectedResourceGroup"
-} else {
-    Write-Error "Invalid selection. Please run the script again and enter a valid number."
-    exit
-}
-
-# Create an Azure AD Application Registration if it doesn't exist
+# Create an Azure AD Application Registration for the App if it doesn't exist
 $app = Get-AzADApplication -DisplayName $appName
 
 if (-not $app) {
@@ -48,26 +31,7 @@ if (-not $app) {
     
     # Fetch the Azure AD application registration by display name again
     $app = Get-AzADApplication -DisplayName $appName
-}
 
-# Look up the default URL of the first web app in the resource group that begins with "todoapp-webapp-web-"
-$webApp = Get-AzWebApp -ResourceGroupName $selectedResourceGroup | Where-Object { $_.Name -like "todoapp-webapp-web-*" } | Select-Object -First 1
-
-if ($webApp) {
-    #Set the reply URLs for the Azure AD Application
-    Set-AzADApplication -ObjectId $app.Id -ReplyUrls @("https://$($webApp.DefaultHostName)/getAToken", "http://localhost:5000/getAToken")
-    
-} else {
-    # Write-Error "No web app found in the resource group $selectedResourceGroup that begins with 'todoapp-webapp-web-'"
-}
-
-# Check if the Service Principal already exists
-$sp = Get-AzADServicePrincipal -ApplicationId $app.AppId -ErrorAction SilentlyContinue
-
-if ($sp) {
-    Write-Output "Service Principal already exists. Skipping creation of Client Secret."
-} else {
-    
     # Create a Service Principal for the Application
     $sp = New-AzADServicePrincipal -ApplicationId $app.AppId
 
@@ -75,12 +39,16 @@ if ($sp) {
     $password = New-AzADSpCredential -ObjectId $sp.Id -EndDate (Get-Date).AddYears(1)
 
     # Output the Values
-    $clientId = $app.AppId
+    $apiAppId = $app.AppId
     $clientSecret = $password.SecretText
 
-    Write-Output "CLIENT_ID: $clientId"
+    # Set environment variables
+    [System.Environment]::SetEnvironmentVariable('CLIENT_ID', $apiAppId, [System.EnvironmentVariableTarget]::Process)
+    [System.Environment]::SetEnvironmentVariable('CLIENT_SECRET', $clientSecret, [System.EnvironmentVariableTarget]::Process)
+
+    Write-Output "CLIENT_ID: $apiAppId"
     Write-Output "CLIENT_SECRET: $clientSecret"
 
-    $env:CLIENT_ID = $clientId
-    $env:CLIENT_SECRET = $clientSecret
+} else {
+    Write-Error "Application already exists. Please run the update-app.ps1 script to update the Azure AD Application Registration once the web app has been created."
 }

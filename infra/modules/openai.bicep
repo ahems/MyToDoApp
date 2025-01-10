@@ -6,6 +6,7 @@ param tags object = {}
 param customSubDomainName string = name
 param kind string = 'OpenAI'
 param openAiDeploymentName string = 'chat'
+param restoreOpenAi bool = false
 
 @allowed([ 'Enabled', 'Disabled' ])
 param publicNetworkAccess string = 'Enabled'
@@ -92,7 +93,7 @@ var deployments = concat(defaultOpenAiDeployments, useGPT4V ? [
   }
 ] : [])
 
-resource account 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
+resource account 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   name: name
   location: location
   tags: tags
@@ -104,13 +105,13 @@ resource account 'Microsoft.CognitiveServices/accounts@2023-05-01' = {
     disableLocalAuth: false
     dynamicThrottlingEnabled: false
     restrictOutboundNetworkAccess: false
-    restore: true
+    restore: restoreOpenAi
   }
   sku: sku
 }
 
 @batchSize(1)
-resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01' = [for deployment in deployments: {
+resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01' = [for deployment in deployments: {
   parent: account
   name: deployment.name
   properties: {
@@ -123,11 +124,11 @@ resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2023-05-01
   }
 }]
 
-resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-resource OpenAiDeployment 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+resource OpenAiDeployment 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'AZUREOPENAIDEPLOYMENTNAME'
   properties: {
@@ -136,7 +137,7 @@ resource OpenAiDeployment 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   }
 }
 
-resource OpenAiKey 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+resource OpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'AZUREOPENAIAPIKEY'
   properties: {
@@ -144,7 +145,7 @@ resource OpenAiKey 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
     contentType: 'text/plain'
   }
 }
-resource Endpoint 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+resource Endpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'AZUREOPENAIENDPOINT'
   properties: {

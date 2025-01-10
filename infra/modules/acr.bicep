@@ -5,21 +5,21 @@ param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceG
 param location string = resourceGroup().location
 param adminUserEnabled bool = true
 
-resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: identityName
 }
 
-// Apply ACR Pull Role
-resource acrRoleAssignment 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name: guid(acr.id)
+resource acrContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid('${acr.name}-contributor')
   scope: acr
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7f951dda-4ed3-4680-a7ca-43fe172d538d') // AcrPull role
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c') // Contributor role
     principalId: azidentity.properties.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
-resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' = {
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: acrName
   location: location
   sku: {
@@ -31,7 +31,7 @@ resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' = {
   }
 }
 
-resource workspace 'Microsoft.OperationalInsights/workspaces@2020-03-01-preview' existing = {
+resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: workspaceName
 }
 

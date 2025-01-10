@@ -16,7 +16,7 @@ param revisionSuffix string = uniqueString(utcNow())
 
 var image = '${containerRegistryName}.azurecr.io/${imageNameAndVersion}'
 
-resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: identityName
 }
 
@@ -28,11 +28,11 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2022-06-01-preview' 
   name: containerAppEnvName
 }
 
-resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' existing = {
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: containerRegistryName
 }
 
-resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
+resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName
   location: location
   identity: {

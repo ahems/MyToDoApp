@@ -5,24 +5,26 @@
 We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Follow these steps:
 
 * Clone the code from this [repository](https://github.com/ahems/MyToDoApp) to your own repo
-* Create a PAT with Repo scope in your own repo and make a note of the secret value
-* Set these environment variables:
-  * gitAccessToken - use the value in the previous step
-  * repositoryUrl - use the URL of your cloned GitHub repo
-  * EMAIL - your accounts' email address in Entra ID, used to set the admin of the database. If you need to you can get this value by running (az account list | ConvertFrom-Json).user[1].name
-  * OBJECT_ID - your accounts' ObjectID in Entra ID. Get this value using:
-  
-```azurecli
-az account show --query id -o tsv
-```
-
 * Download the code from your cloned repo to your local machine
+* Run the "/scripts/create-app-and-secret.ps1" Powershell script in a terminal in VS Code to create an App and Client Secret in your Entra ID tenant, which it will output so you can use them in the next step. Your deployed App will use these values to Authenticate users.
+* Set these environment variables:
+  * CLIENT_ID - get this value from the output of the script ran in the previous step
+  * CLIENT_SECRET - get this value from the output of the script ran in the previous step
+  * NAME - your accounts' name as it appears in Entra ID, used to set the admin of the database. You can get this value by running:
+
+   ```azurecli
+   az ad signed-in-user show --query userPrincipalName -o tsv
+   ```
+
+  * OBJECT_ID - your accounts' ObjectID in Entra ID. Get this value using:
+
+   ```azurecli
+   az ad signed-in-user show --query id -o tsv
+   ```
+
 * (Optional) If your Azure subscription is new, run the "/scripts/Register-Resource-Providers.ps1" Powershell script from a Terminal in VS Code
-* Right-Click on the file "/infra/deploy.bicep" and select "Deploy Bicep File...". Select or create the Resource Group for the name you set the RESOURCE_GROUP variable to, and select the "deploy.bicepparam" parameters file which will expect environment variables "EMAIL", "repositoryUrl", "gitAccessToken" and "OBJECT_ID" to be set as per the previous steps. Wait for this to complete.
-* Run the "/scripts/run-acr-build-task.ps1" Powershell script in a terminal in VS Code to manually kick off the Azure Container Registry tasks created in the previous step. This will pull down the source code from your cloned GitHub repo, build it and push it to the Container Registry ready for deployment.
-* Run the "/scripts/create-app-and-secret.ps1" Powershell script in a terminal in VS Code to create an App and Client Secret in your Entra ID tenant. Your deployed App will use these values to Authenticate users.
-* Add two more Environment Variables, "CLIENT_ID" and "CLIENT_SECRET" each with the values output by the previous script.
-* Right-Click on the file "/infra/deploy-authentication.bicep" and select "Deploy Bicep File...". Select your previous Resource Group, use the "deploy-authentication.bicepparams" parameters file to use your local environment variables. This script will store these values in the KeyVault created in the previous step for use by the Web App.
+* Right-Click on the file "/infra/deploy.bicep" and select "Deploy Bicep File...". Select or create the Resource Group for the name you set the RESOURCE_GROUP variable to, and select the "deploy.bicepparam" parameters file which will expect environment variables above to be set as per the previous steps. Wait for this to complete.
+* Run the "/scripts/update-app.ps1" Powershell script in a terminal in VS Code to update the app registration with the URL of the newly created web app.
 
 ### Configure Database
 
@@ -49,7 +51,7 @@ This will give your User Managed Identity access to the ToDo Database.
 * Finally, run this script to create the ToDo Database table that will hold all our data:
 
 ```sql
-CREATE TABLE ToDo (
+CREATE TABLE todo (
     id INT IDENTITY(1,1) PRIMARY KEY,
     name NVARCHAR(100) NOT NULL,
     recommendations_json JSON,
@@ -61,7 +63,11 @@ CREATE TABLE ToDo (
 );
 ```
 
+You should now be able to launch the web app and see the site.
+
 ### Host in Azure Container Apps
+
+You can use either Azure Web Apps (the default) or Azure Container Apps to host the Web App and API app. To use Azure Container Apps, follow these steps:
 
 * Right-Click on the file "/infra/deploy-aca.bicep", select "Deploy Bicep File...". Select your previous Resource Group, no parameters file and wait for it to complete. This will deploy the two Web Apps and set all necessary App Settings using the values from your KeyVault.
 

@@ -27,22 +27,22 @@ param revisionSuffix string
 var appImage = '${containerRegistryName}.azurecr.io/${appImageNameAndVersion}'
 var apiImage = '${containerRegistryName}.azurecr.io/${apiImageNameAndVersion}'
 
-resource sqlServer 'Microsoft.Sql/servers@2021-02-01-preview' existing = {
+resource sqlServer 'Microsoft.Sql/servers@2024-05-01-preview' existing = {
   name: sqlServerName
 }
 
 resource openAi 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
   name: openAiName
 }
-resource workspace 'Microsoft.OperationalInsights/workspaces@2020-03-01-preview' existing = {
+resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: workspaceName
 }
 
-resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2018-11-30' existing = {
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: identityName
 }
 
-resource acr 'Microsoft.ContainerRegistry/registries@2022-12-01' existing = {
+resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: containerRegistryName
 }
 
@@ -72,7 +72,7 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2022-06-01-preview' 
 
 var DATABASE_CONNECTION_STRING = 'Server=tcp:${sqlServer.properties.fullyQualifiedDomainName},${azureSqlPort};Initial Catalog=todo;Persist Security Info=False;User ID=${sqlServer.properties.administratorLogin};Password=${azuresqlpassword};MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;'
 
-resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
+resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: appName
   location: location
   identity: {
@@ -184,7 +184,7 @@ resource containerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
   }
 }
 
-resource containerApi 'Microsoft.App/containerApps@2022-06-01-preview' = {
+resource containerApi 'Microsoft.App/containerApps@2024-03-01' = {
   name: apiName
   location: location
   identity: {
@@ -256,11 +256,11 @@ resource containerApi 'Microsoft.App/containerApps@2022-06-01-preview' = {
   }
 }
 
-resource keyVault 'Microsoft.KeyVault/vaults@2019-09-01' existing = {
+resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-resource redirecturi 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+resource redirecturi 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'REDIRECT-URI'
   properties: {
@@ -269,7 +269,7 @@ resource redirecturi 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
   }
 }
 
-resource apiurl 'Microsoft.KeyVault/vaults/secrets@2019-09-01' = {
+resource apiurl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'API-URL'
   properties: {

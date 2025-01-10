@@ -6,7 +6,7 @@ import identity.web
 import redis
 import secrets
 import requests
-from flask import Flask, render_template, request, redirect, url_for, session, url_for
+from flask import Flask, render_template, request, redirect, url_for, session
 from flask_session import Session
 from sqlalchemy import null
 from recommendation_engine import RecommendationEngine
@@ -22,11 +22,17 @@ from opentelemetry import trace
 from logging import INFO, getLogger
 load_dotenv()
 
+scope = ["User.Read"]
+
 app = Flask(__name__)
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
 AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
 IS_LOCALHOST = os.environ.get("IS_LOCALHOST", "false").lower() == "true"
+app_insights_connection_string = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
+
+if not app_insights_connection_string:
+    raise ValueError("APPLICATIONINSIGHTS_CONNECTION_STRING environment variable is not set.")
 
 if IS_LOCALHOST:
     credential = DefaultAzureCredential()
@@ -37,7 +43,7 @@ if AZURE_CLIENT_ID:
     print('Using Managed Identity to access Key Vault')
     key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
     client = SecretClient(vault_url=key_vault_uri, credential=credential)
-    AUTHORITY=client.get_secret("AUTHORITY").value;
+    AUTHORITY=client.get_secret("AUTHORITY").value
     CLIENTID=client.get_secret("CLIENTID").value;
     CLIENTSECRET=client.get_secret("CLIENTSECRET").value;
     REDIS_CONNECTION_STRING=client.get_secret("REDIS-CONNECTION-STRING").value;
@@ -100,18 +106,19 @@ def inject_common_variables():
 @app.before_request
 def load_data_to_session():
 
+    if auth.get_user() is None:
+        session["todos"] = null
+        return
+    
     oid = auth.get_user().get("oid")
-    
-    if not oid:
-        raise ValueError("Failed to get OID from the user")
-    
+       
     global api_url
     print("Loading existing ToDo's from API for OID: ", oid)
 
     headers = {
         "Content-Type" : "application/json",
-        'Authorization' : f'Bearer {session.get("token")}',
-        'X-MS-API-ROLE' : 'MyToDoApp'
+        "Authorization" : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
+        "X-MS-API-ROLE" : "MyToDoApp"
     }
 
     query = f"""
@@ -152,8 +159,6 @@ def load_data_to_session():
 @app.route("/")
 def index():
 
-    scope = ["User.Read"]
-
     if not auth.get_user():
         return redirect(url_for("login"))
     else:
@@ -162,7 +167,7 @@ def index():
         session["token"] = auth.get_token_for_user(scope)['access_token']
         session["TabEnum"] = Tab
         session["selectedTab"] =Tab.NONE
-        return render_template("index.html", appinsights_connection_string=app_insights_connection_string)
+        return render_template("index.html")
 
 @app.route("/add", methods=["POST"])
 def add_todo():
@@ -193,7 +198,7 @@ def add_todo():
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f'Bearer {session.get("token")}',
+        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
         'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
@@ -202,7 +207,6 @@ def add_todo():
 
     # Check for errors or handle the response as needed
     if response.status_code == 200:
-        # Success handling, redirect to index
         return redirect(url_for('index'))
     else:
         error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
@@ -218,7 +222,7 @@ def details(id):
     
     global api_url
     
-    todo = get_todo_by_id(id, session.get("token"), api_url)
+    todo = get_todo_by_id(id, auth.get_token_for_user(scope)['access_token'], api_url)
 
     if todo is None:
         return redirect(url_for('index'))
@@ -226,7 +230,7 @@ def details(id):
     session["selectedTab"] =Tab.DETAILS
     session["todo"] = todo
     
-    return render_template('index.html',appinsights_connection_string=app_insights_connection_string)
+    return render_template('index.html')
 
 # Edit a new ToDo
 @app.route('/edit/<int:id>', methods=['GET'])
@@ -237,7 +241,7 @@ def edit(id):
     
     global api_url
     
-    todo = get_todo_by_id(id, session.get("token"), api_url)
+    todo = get_todo_by_id(id, auth.get_token_for_user(scope)['access_token'], api_url)
 
     if todo is None:
         return redirect(url_for('index'))
@@ -245,7 +249,7 @@ def edit(id):
     session["todo"] =todo
     session["selectedTab"] =Tab.EDIT
     
-    return render_template('index.html',appinsights_connection_string=app_insights_connection_string)
+    return render_template('index.html')
 
 # Save existing To Do Item
 @app.route('/update/<int:id>', methods=['POST'])
@@ -298,7 +302,7 @@ def update_todo(id):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f'Bearer {session.get("token")}',
+        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
         'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
@@ -337,7 +341,7 @@ def remove_todo(id):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f'Bearer {session.get("token")}',
+        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
         'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
@@ -365,7 +369,7 @@ async def recommend(id, refresh=False):
     session["selectedTab"] = Tab.RECOMMENDATIONS
     recommendation_engine = RecommendationEngine()
     
-    todo = get_todo_by_id(id, session.get("token"), api_url)
+    todo = get_todo_by_id(id, auth.get_token_for_user(scope)['access_token'], api_url)
 
     if todo is None:
         return redirect(url_for('index'))
@@ -409,7 +413,7 @@ async def recommend(id, refresh=False):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f'Bearer {session.get("token")}',
+        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
         'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
@@ -433,7 +437,7 @@ def completed(id, complete):
 
     global api_url
     
-    todo = get_todo_by_id(id, session.get("token"), api_url)
+    todo = get_todo_by_id(id, auth.get_token_for_user(scope)['access_token'], api_url)
 
     if todo is None:
         return redirect(url_for('index'))
@@ -458,7 +462,7 @@ def completed(id, complete):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f'Bearer {session.get("token")}',
+        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
         'X-MS-API-ROLE' : 'MyToDoApp'
     }
 
