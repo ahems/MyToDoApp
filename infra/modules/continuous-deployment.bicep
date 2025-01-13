@@ -27,6 +27,7 @@ resource websiteContributorRoleAssignment 'Microsoft.Authorization/roleAssignmen
   properties: {
     roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', websiteContributorRoleID) // Website Contributor role
     principalId: azidentity.properties.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
@@ -97,14 +98,20 @@ resource configureContinuousDeployment 'Microsoft.Resources/deploymentScripts@20
 
       $secureToken = (Get-AzAccessToken -AsSecureString).Token
       $ssPtr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureToken)
+      
       try {
+
         $token = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ssPtr)
+
         $headers = @{
           "Authorization" = "Bearer $token"
           "Content-Type"  = "application/json"
         }
 
+        Write-Output "Enabling CD for $webAppName..."
         $result = Invoke-RestMethod -Uri $uri -Method POST -Headers $headers
+        Write-Debug $result
+
         $serviceUri = $result.properties.scmUri + "/docker/hook"
 
         $body = @{
@@ -117,10 +124,12 @@ resource configureContinuousDeployment 'Microsoft.Resources/deploymentScripts@20
             }
         } | ConvertTo-Json
 
-        Write-Output $body
+        Write-Output "Creating Web Hook on ACR for $webAppName"
+        $result2 = Invoke-RestMethod -Uri $acruri -Method PUT -Headers $headers -Body $body
+        Write-Debug $result2
 
-        Invoke-RestMethod -Uri $acruri -Method PUT -Headers $headers -Body $body
-
+      } catch {
+        Write-Error "An error was caught and swallowed: $_"
       } finally {
           [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ssPtr)
       }

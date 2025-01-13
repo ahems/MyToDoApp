@@ -109,6 +109,8 @@ resource runTask 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     try {
       $token = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($ssPtr)
       Invoke-RestMethod -Method Post -Uri $uri -Headers @{Authorization = "Bearer $token"} -ContentType "application/json" -Body $body
+    } catch {
+        Write-Error "An error was caught and swallowed: $_"
     } finally {
       [System.Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ssPtr)
     }

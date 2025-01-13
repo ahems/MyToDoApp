@@ -155,7 +155,7 @@ module buildTaskForWeb 'modules/task.bicep' = {
     useAuthorization: false
   }
   dependsOn: [
-    acr
+    continuousDeploymentForWebApp
   ]
 }
 
@@ -171,7 +171,7 @@ module buildTaskForAPI 'modules/task.bicep' = {
     useAuthorization: useAuthorizationOnAPI
   }
   dependsOn: [
-    acr
+    continuousDeploymentForApiApp
   ]
 }
 

@@ -14,10 +14,6 @@ resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31
   name: identityName
 }
 
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
-  name: keyVaultName
-}
-
 resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
   name: containerRegistryName
 }
@@ -49,6 +45,10 @@ resource webApp 'Microsoft.Web/sites@2024-04-01' = {
         {
           name: 'API_URL'
           value: apiAppURL
+        }
+        {
+          name: 'REDIRECT_URI'
+          value: 'https://${webAppName}.azurewebsites.net/getAToken'
         }
         {
           name:'KEY_VAULT_NAME'
@@ -102,15 +102,6 @@ resource log 'Microsoft.Web/sites/config@2024-04-01' = {
         level: 'Verbose'
       }
     }
-  }
-}
-
-resource redirecturi 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
-  name: 'REDIRECT-URI'
-  properties: {
-    value: 'https://${webApp.properties.defaultHostName}/getAToken'
-    contentType: 'text/plain'
   }
 }
 
