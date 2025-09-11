@@ -22,6 +22,18 @@
     },
     "useFreeLimit": {
       "value": true
+    },
+    "chatGptDeploymentVersion": {
+      "value": "${chatGptDeploymentVersion}"
+    },
+    "chatGptSkuName": {
+      "value": "${chatGptSkuName}"
+    },
+    "chatGptModelName": {
+      "value": "${chatGptModelName}"
+    },
+    "chatGptDeploymentCapacity": {
+      "value": "${chatGptDeploymentCapacity}"
     }
   }
 }
