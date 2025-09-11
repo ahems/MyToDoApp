@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/Azure/azure-dev/main/schemas/v1.0/azure.yaml.json
+
+name: my-to-do-app
+hooks:
+  preprovision:
+    shell: pwsh
+    run: ./scripts/create-app-and-secret.ps1
+services:
+    my-to-do-app:
+        project: .
+        host: containerapp
+        language: python
+        docker:
+            path: dockerfile
+            remoteBuild: true
+        hooks:
+            preprovision:
+              shell: pwsh
+              run: ./scripts/openai-model-discovery.ps1
+    my-to-do-api:
+        project: ./api
+        host: containerapp
+        language: python
+        docker:
+            path: dockerfile
+            remoteBuild: true
+infra:
+  provider: bicep
+  path: ./infra
+  module: deploy.bicep

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "aadAdminLogin": {
+      "value": "${NAME}"
+    },
+    "aadAdminObjectId": {
+      "value": "${OBJECT_ID}"
+    },
+    "webAppClientSecret": {
+      "value": "${CLIENT_SECRET}"
+    },
+    "webAppClientId": {
+      "value": "${CLIENT_ID}"
+    },
+    "restoreOpenAi": {
+      "value": false
+    },
+    "useFreeLimit": {
+      "value": true
+    }
+  }
+}

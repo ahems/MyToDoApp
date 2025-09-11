@@ -8,6 +8,12 @@ We can use Visual Studio Code to deploy the Bicep Scripts directly to Azure. Fol
 * Download the code from your cloned repo to your local machine
 * Run the "/scripts/create-app-and-secret.ps1" Powershell script in a terminal in VS Code to create an App and Client Secret in your Entra ID tenant, which it will output so you can use them in the next step. Your deployed App will use these values to Authenticate users.
 * Set these environment variables:
+  * TENANT_ID - If you want to use a particular Entra ID Tenant when authenticating (optional)
+  
+  ```azurecli
+  azd env set "TENANT_ID" "7c55576f-e738-4097-8c71-053078eadf3f"
+   ```
+
   * CLIENT_ID - get this value from the output of the script ran in the previous step
   * CLIENT_SECRET - get this value from the output of the script ran in the previous step
   * NAME - your accounts' name as it appears in Entra ID, used to set the admin of the database. You can get this value by running:

@@ -1,26 +1,71 @@
-# Check if the PowerShell version is at least 7
-if ($PSVersionTable.PSVersion.Major -lt 7) {
-    Write-Error "This script requires PowerShell 7 or above. Please upgrade your PowerShell version - https://aka.ms/PSWindows"
-    exit
+# Trust PSGallery to suppress the untrusted repository prompt
+try {
+    $gallery = Get-PSRepository -Name 'PSGallery' -ErrorAction Stop
+    if ($gallery.InstallationPolicy -ne 'Trusted') {
+        Write-Output "Setting PSGallery repository to Trusted..."
+        Set-PSRepository -Name 'PSGallery' -InstallationPolicy Trusted
+    }
+} catch {
+    # PSGallery not registered, so register it
+    Write-Output "Registering PSGallery repository..."
+    Register-PSRepository -Name 'PSGallery' -SourceLocation 'https://www.powershellgallery.com/api/v2' -InstallationPolicy Trusted
 }
 
-# Install Azure PowerShell if not already installed
-if (-not (Get-Module -ListAvailable -Name Az)) {
-    Install-Module -Name Az -AllowClobber -Scope CurrentUser
-}
-
+# Install Microsoft Graph module if not already installed
 if (-not (Get-Module -ListAvailable -Name Microsoft.Graph)) {
-    Install-Module Microsoft.Graph -Scope CurrentUser
+    Write-Output "Installing Microsoft Graph module..."
+    Install-Module Microsoft.Graph -Scope CurrentUser -Force -Confirm:$false
+}
+
+# Ensure Az.Resources (provides Get-AzADApplication / New-AzADApplication) is installed
+if (-not (Get-Module -ListAvailable -Name Az.Resources)) {
+    Write-Output "Installing Az.Resources module..."
+    Install-Module Az.Resources -Scope CurrentUser -Force -Confirm:$false
+}
+
+# Import required module
+Import-Module Az.Resources -ErrorAction Stop
+
+# Get tenant ID from azd environment
+$tenantId = azd env get-value 'TENANT_ID'
+
+$SubscriptionId = azd env get-value 'AZURE_SUBSCRIPTION_ID'
+if( $SubscriptionId ) {
+    Update-AzConfig -DefaultSubscriptionForLogin $SubscriptionId
+}
+
+# Authenticate if not already logged in
+if (-not (Get-AzContext -ErrorAction SilentlyContinue)) {
+    Write-Output "Connecting to Azure..."
+    if ($tenantId) {
+        Write-Output "Connecting to Azure with specified tenant ID..."
+        Connect-AzAccount -Tenant $tenantId -UseDeviceAuthentication | Out-Null
+    } else {
+        Write-Warning "TENANT_ID not found in azd environment. Proceeding without specifying tenant."
+        Connect-AzAccount -UseDeviceAuthentication | Out-Null
+    }
 }
 
 # Variables
 $appName = "MyToDoApp"
 
-# Login to Azure
-Connect-AzAccount
+# Set environment variables used by Bicep Templates
+$NAME = azd env get-value 'NAME'
+$OBJECT_ID = azd env get-value 'OBJECT_ID'
+
+if($NAME -ceq "ERROR: key 'NAME' not found in the environment values" -or $OBJECT_ID -ceq "ERROR: key 'OBJECT_ID' not found in the environment values") {
+    Write-Output "Setting NAME and OBJECT_ID environment variables..."
+    # Get the signed-in user's principal name (email)
+    $NAME = (Get-AzContext).Account.Id
+    azd env set 'NAME' $NAME
+
+    # Get the signed-in user's object ID
+    $OBJECT_ID = (Get-AzADUser -SignedIn).Id
+    azd env set 'OBJECT_ID' $OBJECT_ID
+}
 
 # Create an Azure AD Application Registration for the App if it doesn't exist
-$app = Get-AzADApplication -DisplayName $appName
+$app = Get-AzADApplication -DisplayName $appName -ErrorAction Stop
 
 if (-not $app) {
     Write-Output "Application not found. Creating a new Azure AD Application Registration..."
@@ -43,12 +88,10 @@ if (-not $app) {
     $clientSecret = $password.SecretText
 
     # Set environment variables
-    [System.Environment]::SetEnvironmentVariable('CLIENT_ID', $apiAppId, [System.EnvironmentVariableTarget]::Process)
-    [System.Environment]::SetEnvironmentVariable('CLIENT_SECRET', $clientSecret, [System.EnvironmentVariableTarget]::Process)
+    azd env set 'CLIENT_ID' $apiAppId
+    azd env set 'CLIENT_SECRET' $clientSecret
 
-    Write-Output "CLIENT_ID: $apiAppId"
-    Write-Output "CLIENT_SECRET: $clientSecret"
-
+    Write-Output "Azure AD Application Registration and Service Principal created successfully."
 } else {
-    Write-Error "Application already exists. Please run the update-app.ps1 script to update the Azure AD Application Registration once the web app has been created."
+    Write-Output "Application already exists - nothing to do."
 }

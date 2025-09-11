@@ -1,22 +1,24 @@
-param cognitiveservicesname string = 'todoapp-openai-${uniqueString(resourceGroup().id)}'
-param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
-param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
-param appInsightsName string = 'todoapp-appinsights-${toLower(uniqueString(resourceGroup().id))}'
-param workspaceName string = 'todoapp-workspace-${toLower(uniqueString(resourceGroup().id))}'
-param acrName string = 'todoappacr${toLower(uniqueString(resourceGroup().id))}'
-param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
-param diagnosticsName string = 'acr-diagnostics-${toLower(uniqueString(resourceGroup().id))}'
+targetScope = 'resourceGroup'
+param resourceToken string = toLower(uniqueString(resourceGroup().id, environmentName, location))
+param environmentName string
+param cognitiveservicesname string = 'todoapp-openai-${resourceToken}'
+param keyVaultName string = 'todoapp-kv-${resourceToken}'
+param identityName string = 'todoapp-identity-${resourceToken}'
+param appInsightsName string = 'todoapp-appinsights-${toLower(resourceToken)}'
+param workspaceName string = 'todoapp-workspace-${toLower(resourceToken)}'
+param acrName string = 'todoappacr${toLower(resourceToken)}'
+param sqlServerName string = 'todoapp-sql-${toLower(resourceToken)}'
+param diagnosticsName string = 'acr-diagnostics-${toLower(resourceToken)}'
 param cognitiveservicesLocation string = 'canadaeast'
-param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}'
-param rgName string = resourceGroup().name
+param redisCacheName string = 'todoapp-redis-${resourceToken}'
 param location string = resourceGroup().location
 param repositoryUrl string = 'https://github.com/ahems/MyToDoApp.git#main'
-param apiAppName string = 'todoapp-webapp-api-${uniqueString(resourceGroup().id)}'
-param webAppName string = 'todoapp-webapp-web-${uniqueString(resourceGroup().id)}'
+param apiAppName string = 'todoapp-webapp-api-${resourceToken}'
+param webAppName string = 'todoapp-webapp-web-${resourceToken}'
 param apiImageNameAndVersion string = 'todoapi:latest'
 param appImageNameAndVersion string = 'todoapp:latest'
 param appServicePlanSku string = 'B1'
-param appServicePlanName string = 'todoapp-asp-${uniqueString(resourceGroup().id)}'
+param appServicePlanName string = 'todoapp-asp-${resourceToken}'
 param adminUserEnabled bool = true
 param aadAdminLogin string
 param aadAdminObjectId string
@@ -29,11 +31,23 @@ param useFreeLimit bool = true
 param webAppClientId string
 @secure()
 param webAppClientSecret string
+param gpt4vModelName string = 'gpt-4v'
+param gpt4vModelVersion string = '2024-02-15-preview'
+param openAiDeploymentName string = 'gpt-4v'
+param useGPT4V bool = true
+param chatGptModelName string = 'gpt-5-mini'
+param chatGptDeploymentName string = 'chat'
+param chatGptDeploymentVersion string = '2025-08-07'
+param chatGptDeploymentCapacity int = 30
+param embeddingModelName string = 'text-embedding-ada-002'
+param embeddingDeploymentName string = 'embedding'
+param embeddingDeploymentVersion string = '2'
+param embeddingDeploymentCapacity int = 30
+param embeddingDimensions int = 1536
 
 var apiAppURL = 'https://${apiAppName}.azurewebsites.net/graphql/'
 
 module authentication 'modules/authentication.bicep' = {
-  scope: resourceGroup(rgName)
   name: 'Deploy-Authentication'
   params: {
     keyVaultName: keyVaultName
@@ -47,7 +61,6 @@ module authentication 'modules/authentication.bicep' = {
 }
 
 module redis 'modules/redis.bicep' = {
-  scope: resourceGroup(rgName)
   name: 'Deploy-Redis'
   params: {
     redisCacheName: redisCacheName
@@ -61,13 +74,25 @@ module redis 'modules/redis.bicep' = {
 }
 
 module cognitiveservices 'modules/openai.bicep' = {
-  scope: resourceGroup(rgName)
   name: 'Deploy-Open-AI-Service'
   params: {
     name: cognitiveservicesname
     location: cognitiveservicesLocation
     customSubDomainName: cognitiveservicesname
     restoreOpenAi: restoreOpenAi
+    chatGptModelName: chatGptModelName
+    chatGptDeploymentName: chatGptDeploymentName
+    chatGptDeploymentVersion: chatGptDeploymentVersion
+    chatGptDeploymentCapacity: chatGptDeploymentCapacity
+    embeddingModelName: embeddingModelName
+    embeddingDeploymentName: embeddingDeploymentName
+    embeddingDeploymentVersion: embeddingDeploymentVersion
+    embeddingDeploymentCapacity: embeddingDeploymentCapacity
+    embeddingDimensions: embeddingDimensions
+    gpt4vModelName: gpt4vModelName
+    gpt4vModelVersion: gpt4vModelVersion
+    openAiDeploymentName: openAiDeploymentName
+    useGPT4V: useGPT4V
   }
   dependsOn: [
     keyvault
@@ -75,7 +100,6 @@ module cognitiveservices 'modules/openai.bicep' = {
 }
 
 module keyvault 'modules/keyvault.bicep' = {
-  scope: resourceGroup(rgName)
   name: 'Deploy-KeyVault'
   params: {
     keyVaultName: keyVaultName
@@ -88,7 +112,6 @@ module keyvault 'modules/keyvault.bicep' = {
 }
 
 module database 'modules/database.bicep' = {
-  scope: resourceGroup(rgName)
   name: 'Deploy-Database'
   params: {
     keyVaultName: keyVaultName
@@ -105,7 +128,6 @@ module database 'modules/database.bicep' = {
 }
 
 module acr 'modules/acr.bicep' = {
-  scope: resourceGroup(rgName)
   name: 'Deploy-ACR'
   params: {
     acrName: acrName
@@ -121,7 +143,6 @@ module acr 'modules/acr.bicep' = {
 }
 
 module identity 'modules/identity.bicep' = {
-  scope: resourceGroup(rgName)
   name: 'Deploy-User-Managed-Identity'
   params: {
     identityName: identityName
@@ -130,7 +151,6 @@ module identity 'modules/identity.bicep' = {
 }
 
 module appinsights 'modules/applicationinsights.bicep' = {
-  scope: resourceGroup(rgName)
   name: 'Deploy-Application-Insights'
   params: {
     appName: appInsightsName
