@@ -3,6 +3,17 @@ param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
 
+@description('Redis pricing tier: Basic, Standard, or Premium')
+@allowed([ 'Basic', 'Standard', 'Premium' ])
+param redisSkuName string = 'Basic'
+
+@description('Redis family: C for Basic/Standard, P for Premium')
+@allowed([ 'C', 'P' ])
+param redisSkuFamily string = 'C'
+
+@description('Redis capacity (0-6 for Basic/Standard; 1-5 for Premium). 0 corresponds to C0 (250MB).')
+param redisSkuCapacity int = 0
+
 resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: identityName
 }
@@ -22,9 +33,9 @@ resource redisCache 'Microsoft.Cache/redis@2024-11-01' = {
   }
   properties: {
     sku: {
-      name: 'Basic'
-      family: 'C'
-      capacity: 0
+      name: redisSkuName
+      family: redisSkuFamily
+      capacity: redisSkuCapacity
     }
     enableNonSslPort: false
     minimumTlsVersion: '1.2'

@@ -117,6 +117,39 @@ function Ensure-OpenAIAccount {
     }
 }
 
+# --- Early Exit If Selection Already Made ---
+# If all required environment variables for BOTH chat completion and embeddings are already populated,
+# we can skip discovery to save time in repeated provisioning.
+
+# Chat model vars
+$existingDeploymentVersion = Get-AzdValue -Name 'chatGptDeploymentVersion'
+$existingSkuName           = Get-AzdValue -Name 'chatGptSkuName'
+$existingModelName         = Get-AzdValue -Name 'chatGptModelName'
+$existingCapacity          = Get-AzdValue -Name 'chatGptDeploymentCapacity'
+
+# Embeddings model vars
+$existingEmbVersion        = Get-AzdValue -Name 'embeddingDeploymentVersion'
+$existingEmbSku            = Get-AzdValue -Name 'embeddingDeploymentSkuName'
+$existingEmbModel          = Get-AzdValue -Name 'embeddingDeploymentModelName'
+$existingEmbCapacity       = Get-AzdValue -Name 'embeddingDeploymentCapacity'
+
+$existingLocation          = Get-AzdValue -Name 'AZURE_LOCATION'
+
+$chatComplete    = ($existingDeploymentVersion -and $existingSkuName -and $existingModelName -and $existingCapacity)
+$embeddingsComplete = ($existingEmbVersion -and $existingEmbSku -and $existingEmbModel -and $existingEmbCapacity)
+
+if ($chatComplete -and $embeddingsComplete) {
+    Write-Host "Existing selections detected:" -ForegroundColor Green
+    Write-Host "  Chat Model     : $existingModelName $existingDeploymentVersion (SKU $existingSkuName, Capacity $existingCapacity, Region $existingLocation)" -ForegroundColor Green
+    Write-Host "  Embeddings Model: $existingEmbModel $existingEmbVersion (SKU $existingEmbSku, Region $existingLocation)" -ForegroundColor Green
+    Write-Host "Skipping model discovery because both chat and embeddings selections are already set." -ForegroundColor Green
+    exit 0
+} elseif ($chatComplete -and -not $embeddingsComplete) {
+    Write-Host "Chat model selection already present; embeddings model missing, continuing to discover embeddings." -ForegroundColor Yellow
+} elseif ($embeddingsComplete -and -not $chatComplete) {
+    Write-Host "Embeddings model selection already present; chat model missing, continuing to discover chat model." -ForegroundColor Yellow
+}
+
 function Get-AccountModelsMultiVersion {
     param(
         [string]$SubId,[string]$Rg,[string]$Acct
@@ -354,40 +387,67 @@ Ensure-OpenAIAccount -SubId $SubscriptionId -Rg $ResourceGroup -Acct $AccountNam
 Write-Host "Enumerating models for account '$AccountName' in region '$Location'..." -ForegroundColor Cyan
 $enum = Get-AccountModelsMultiVersion -SubId $SubscriptionId -Rg $ResourceGroup -Acct $AccountName
 $allQuota = @()
+
+# TODO: Parallelize this with ForEach-Object -Parallel in PS 7+
+$total = $enum.Count
+$idx = 0
 $enum | ForEach-Object {
+    $idx++
     $fmt = if ([string]::IsNullOrWhiteSpace($_.format)) { 'OpenAI' } else { $_.format }
     try {
-    Write-Host "  Getting quota for model '$($_.name)' version '$($_.version)'..." -ForegroundColor DarkCyan
+        Write-Host "  [$idx/$total] Getting quota for model '$($_.name)' version '$($_.version)'..." -ForegroundColor DarkCyan
         $quota = Get-AoaiModelAvailableQuota -ResourceGroupName $ResourceGroup -AccountName $AccountName -ModelName $_.name -ModelVersion $_.version -ModelFormat $fmt -ErrorAction Stop
         if ($quota) { $allQuota += $quota }
     }
     catch {
-        Write-Warning "  Failed to retrieve quota for model '$($_.name)' version '$($_.version)': $($_.Exception.Message)"
+        Write-Warning "Failed to retrieve quota for model '$($_.name)' version '$($_.version)': $($_.Exception.Message)"
     }
 }
 
 if ($allQuota.Count -gt 0) {
-    Write-Host "\nAzure OpenAI Model Capacity (combined)" -ForegroundColor Cyan
+    Write-Host "Model Quotas Retrieved. Sorting by most available, and newest and picking the top one for GPT and Embeddings:" -ForegroundColor DarkGreen
+
     $allQuota | Sort-Object -Property @{Expression={ [int]$_.AvailableCapacity }; Descending=$true}, @{Expression={$_.ModelVersion}; Descending=$true} | Select-Object @{n='Model';e={$_.ModelName}}, @{n='Version';e={$_.ModelVersion}}, Location, SkuName, @{n='Available';e={[int]$_.AvailableCapacity}} | Format-Table -AutoSize | Out-String | Write-Host
 
-    #TODO - Selection logic here - currently just picks the first available model
     $selected = $allQuota | Sort-Object -Property @{Expression={ [int]$_.AvailableCapacity }; Descending=$true}, @{Expression={$_.ModelVersion}; Descending=$true} | Select-Object -First 1
-    $SelectedModelVersion = $selected.ModelVersion
-    $SelectedModelSku = $selected.SkuName
-    $SelectedModelCapacity = $selected.AvailableCapacity
-    $ModelName = $selected.ModelName
-    Write-Host "Selected model: $ModelName version $SelectedModelVersion SKU $SelectedModelSku with $SelectedModelCapacity available capacity." -ForegroundColor Green
-    
-    # Persist outputs for Bicep (param names match environment variable names azd will inject)
-    azd env set chatGptDeploymentVersion $SelectedModelVersion | Out-Null
-    azd env set chatGptSkuName $SelectedModelSku | Out-Null
-    azd env set chatGptModelName $ModelName | Out-Null
-    azd env set chatGptDeploymentCapacity $SelectedModelCapacity | Out-Null
+    if($selected) {
+        $SelectedModelVersion = $selected.ModelVersion
+        $SelectedModelSku = $selected.SkuName
+        $SelectedModelCapacity = $selected.AvailableCapacity
+        $ModelName = $selected.ModelName
+        Write-Host "Selected ChatGPT model: $ModelName version $SelectedModelVersion SKU $SelectedModelSku with $SelectedModelCapacity available capacity." -ForegroundColor Green
 
-    Write-Host "Environment updated: chatGptDeploymentVersion=$SelectedModelVersion chatGptSkuName=$SelectedModelSku" -ForegroundColor Cyan
+        # Persist outputs for Bicep (param names match environment variable names azd will inject)
+        azd env set chatGptDeploymentVersion $SelectedModelVersion | Out-Null
+        azd env set chatGptSkuName $SelectedModelSku | Out-Null
+        azd env set chatGptModelName $ModelName | Out-Null
+        azd env set availableChatGptDeploymentCapacity $SelectedModelCapacity | Out-Null
+
+    } else {
+        throw "No suitable ChatGPT model found after sorting."
+    }    
+
+    $embeddingsModel = $allQuota | Where-Object { $_.ModelName -like "*embedding*" } | Sort-Object -Property @{Expression={ [int]$_.AvailableCapacity }; Descending=$true}, @{Expression={$_.ModelVersion}; Descending=$true} | Select-Object -First 1
+    if ($embeddingsModel) {
+        $SelectedEmbeddingsModelVersion = $embeddingsModel.ModelVersion
+        $SelectedEmbeddingsModelSku = $embeddingsModel.SkuName
+        $SelectedEmbeddingsModelCapacity = $embeddingsModel.AvailableCapacity
+        $EmbeddingsModelName = $embeddingsModel.ModelName
+        $embeddingsModelDimension = $embeddingsModel.Dimensions
+        Write-Host "Selected embeddings model: $EmbeddingsModelName version $SelectedEmbeddingsModelVersion SKU $SelectedEmbeddingsModelSku with $SelectedEmbeddingsModelCapacity available capacity." -ForegroundColor Green
+
+        # Persist outputs for Bicep (param names match environment variable names azd will inject)
+        azd env set embeddingDeploymentVersion $SelectedEmbeddingsModelVersion | Out-Null
+        azd env set embeddingSkuName $SelectedEmbeddingsModelSku | Out-Null
+        azd env set embeddingModelName $EmbeddingsModelName | Out-Null
+        azd env set availableEmbeddingDeploymentCapacity $SelectedEmbeddingsModelCapacity | Out-Null
+        azd env set embeddingDimensions $embeddingsModelDimension | Out-Null
+    } else {
+        Write-Warning "No suitable embeddings model found."
+    }
 
     exit 0
 
 } else {
-    Write-Host "No quota data collected." -ForegroundColor DarkGray
+    Write-Warning "No quota data collected." -ForegroundColor DarkGray
 }

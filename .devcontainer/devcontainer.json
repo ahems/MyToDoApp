@@ -5,8 +5,12 @@
         "ghcr.io/devcontainers/features/azure-cli:1": {
             "version": "latest"
         },
+        "ghcr.io/devcontainers/features/git:1": {
+            "version": "latest",
+            "lfs": true
+        },
         "ghcr.io/azure/azure-dev/azd:latest": {},
-         "ghcr.io/devcontainers/features/powershell:1": {
+        "ghcr.io/devcontainers/features/powershell:1": {
             "version": "latest"
         }
     },
@@ -16,13 +20,21 @@
                 "ms-azuretools.vscode-bicep",
                 "ms-python.python",
                 "ms-vscode.powershell"
-            ]
+            ],
+            "settings": {
+                // Provide a stable default PowerShell name that matches the configured additional path below
+                "powershell.powerShellAdditionalExePaths": {
+                    "PowerShell (x64)": "/usr/bin/pwsh"
+                },
+                "powershell.powerShellDefaultVersion": "PowerShell (x64)",
+                "powershell.enableStartUpBanner": false
+            }
         }
     },
     "forwardPorts": [
         50505
     ],
-    "postCreateCommand": "az bicep install",
+    "postCreateCommand": "az bicep install && git lfs install || true",
     "hostRequirements": {
         "memory": "8gb"
     }

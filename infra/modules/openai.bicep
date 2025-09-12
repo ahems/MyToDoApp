@@ -21,50 +21,33 @@ param networkAcls object = empty(allowedIpRules) ? {
   ipRules: allowedIpRules
   defaultAction: 'Deny'
 }
-param embeddingModelName string = ''
+param embeddingModelName string = 'embedding'
 param embeddingDeploymentName string = ''
 param embeddingDeploymentVersion string = ''
 param embeddingDeploymentCapacity int = 0
-param embeddingDimensions int = 0
+param embeddingSkuName string = ''
 var embedding = {
   modelName: !empty(embeddingModelName) ? embeddingModelName : 'text-embedding-ada-002'
   deploymentName: !empty(embeddingDeploymentName) ? embeddingDeploymentName : 'embedding'
   deploymentVersion: !empty(embeddingDeploymentVersion) ? embeddingDeploymentVersion : '2'
   deploymentCapacity: embeddingDeploymentCapacity != 0 ? embeddingDeploymentCapacity : 30
-  dimensions: embeddingDimensions != 0 ? embeddingDimensions : 1536
+  embeddingSkuName: !empty(embeddingSkuName) ? embeddingSkuName : 'Standard'
 }
 param openAiHost string = 'azure'
 param chatGptModelName string = ''
-param chatGptDeploymentName string = ''
+param chatGptDeploymentName string = 'chat'
 param chatGptDeploymentVersion string = ''
 param chatGptDeploymentCapacity int = 0
+param chatGptSkuName string = ''
 var chatGpt = {
   modelName: !empty(chatGptModelName) ? chatGptModelName : startsWith(openAiHost, 'azure') ? 'gpt-35-turbo' : 'gpt-3.5-turbo'
   deploymentName: !empty(chatGptDeploymentName) ? chatGptDeploymentName : 'chat'
   deploymentVersion: !empty(chatGptDeploymentVersion) ? chatGptDeploymentVersion : '0613'
   deploymentCapacity: chatGptDeploymentCapacity != 0 ? chatGptDeploymentCapacity : 30
+  skuName: !empty(chatGptSkuName) ? chatGptSkuName : 'Standard'
 }
 
-// --- SKU handling additions ---
-@description('Optional override for the Chat model SKU (e.g. Standard, GlobalStandard, ProvisionedManaged). Leave empty for auto-selection.')
-param chatGptSkuName string = 'GlobalStandard'
-@description('Optional override for the Embedding model SKU. Leave empty for default Standard.')
-param embeddingSkuName string = ''
-@description('Optional override for the GPT-4V (vision) model SKU. Leave empty for auto-selection.')
-param gpt4vSkuName string = ''
-
-// Auto-select newer required SKUs for next-gen models (e.g. gpt-5 / gpt-5-mini) which do not support Standard
-var chatGptEffectiveSkuName = !empty(chatGptSkuName) ? chatGptSkuName : (startsWith(toLower(chatGpt.modelName), 'gpt-5') ? 'GlobalStandard' : 'Standard')
-var embeddingEffectiveSkuName = !empty(embeddingSkuName) ? embeddingSkuName : 'Standard'
-var gpt4vEffectiveSkuName = !empty(gpt4vSkuName) ? gpt4vSkuName : (startsWith(toLower(gpt4vModelName), 'gpt-5') ? 'GlobalStandard' : 'Standard')
-
-param gpt4vModelName string = 'gpt-4'
-param gpt4vDeploymentName string = 'gpt-4v'
-param gpt4vModelVersion string = 'vision-preview'
-param gpt4vDeploymentCapacity int = 10
-param useGPT4V bool = true
-
-var defaultOpenAiDeployments = [
+var deployments = [
   {
     name: chatGpt.deploymentName
     model: {
@@ -73,7 +56,7 @@ var defaultOpenAiDeployments = [
       version: chatGpt.deploymentVersion
     }
     sku: {
-  name: chatGptEffectiveSkuName
+      name: chatGpt.skuName
       capacity: chatGpt.deploymentCapacity
     }
   }
@@ -85,26 +68,11 @@ var defaultOpenAiDeployments = [
       version: embedding.deploymentVersion
     }
     sku: {
-  name: embeddingEffectiveSkuName
+      name: 'Standard'
       capacity: embedding.deploymentCapacity
     }
   }
 ]
-
-var deployments = concat(defaultOpenAiDeployments, useGPT4V ? [
-  {
-    name: gpt4vDeploymentName
-    model: {
-      format: 'OpenAI'
-      name: gpt4vModelName
-      version: gpt4vModelVersion
-    }
-    sku: {
-  name: gpt4vEffectiveSkuName
-      capacity: gpt4vDeploymentCapacity
-    }
-  }
-] : [])
 
 resource account 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
   name: name
@@ -129,12 +97,8 @@ resource deployment 'Microsoft.CognitiveServices/accounts/deployments@2024-10-01
   name: deployment.name
   properties: {
     model: deployment.model
-    raiPolicyName: deployment.?raiPolicyName
   }
-  sku: deployment.?sku ?? {
-    name: 'Standard'
-    capacity: 20
-  }
+  sku: deployment.sku
 }]
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
@@ -170,6 +134,3 @@ resource Endpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
 output endpoint string = account.properties.endpoint
 output id string = account.id
 output name string = account.name
-output chatModelSku string = chatGptEffectiveSkuName
-output embeddingModelSku string = embeddingEffectiveSkuName
-output visionModelSku string = gpt4vEffectiveSkuName

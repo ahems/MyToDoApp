@@ -1,7 +1,7 @@
 targetScope = 'resourceGroup'
 param resourceToken string = toLower(uniqueString(resourceGroup().id, environmentName, location))
 param environmentName string
-param cognitiveservicesname string = 'todoapp-openai-${resourceToken}'
+param cognitiveservicesname string
 param keyVaultName string = 'todoapp-kv-${resourceToken}'
 param identityName string = 'todoapp-identity-${resourceToken}'
 param appInsightsName string = 'todoapp-appinsights-${toLower(resourceToken)}'
@@ -9,7 +9,7 @@ param workspaceName string = 'todoapp-workspace-${toLower(resourceToken)}'
 param acrName string = 'todoappacr${toLower(resourceToken)}'
 param sqlServerName string = 'todoapp-sql-${toLower(resourceToken)}'
 param diagnosticsName string = 'acr-diagnostics-${toLower(resourceToken)}'
-param cognitiveservicesLocation string = 'canadaeast'
+param cognitiveservicesLocation string = resourceGroup().location
 param redisCacheName string = 'todoapp-redis-${resourceToken}'
 param location string = resourceGroup().location
 param repositoryUrl string = 'https://github.com/ahems/MyToDoApp.git#main'
@@ -31,21 +31,21 @@ param useFreeLimit bool = true
 param webAppClientId string
 @secure()
 param webAppClientSecret string
-param gpt4vModelName string = 'gpt-4v'
-param gpt4vModelVersion string = '2024-02-15-preview'
-param openAiDeploymentName string = 'gpt-4v'
-param useGPT4V bool = true
-param chatGptModelName string = 'gpt-5-mini'
+param openAiDeploymentName string = 'chat'
+param chatGptModelName string
 param chatGptDeploymentName string = 'chat'
-param chatGptDeploymentVersion string = '2025-08-07'
-param chatGptDeploymentCapacity int = 30
-param embeddingModelName string = 'text-embedding-ada-002'
+param chatGptDeploymentVersion string
+param chatGptSkuName string
+param availableChatGptDeploymentCapacity int
+param embeddingModelName string
 param embeddingDeploymentName string = 'embedding'
-param embeddingDeploymentVersion string = '2'
-param embeddingDeploymentCapacity int = 30
-param embeddingDimensions int = 1536
+param embeddingDeploymentVersion string
+param embeddingSkuName string
+param availableEmbeddingDeploymentCapacity int
 
 var apiAppURL = 'https://${apiAppName}.azurewebsites.net/graphql/'
+var chatGptDeploymentCapacity = availableChatGptDeploymentCapacity / 10
+var embeddingDeploymentCapacity = availableEmbeddingDeploymentCapacity / 10
 
 module authentication 'modules/authentication.bicep' = {
   name: 'Deploy-Authentication'
@@ -66,6 +66,7 @@ module redis 'modules/redis.bicep' = {
     redisCacheName: redisCacheName
     keyVaultName: keyVaultName
     location: location
+    identityName: identityName
   }
   dependsOn: [
     keyvault
@@ -84,15 +85,14 @@ module cognitiveservices 'modules/openai.bicep' = {
     chatGptDeploymentName: chatGptDeploymentName
     chatGptDeploymentVersion: chatGptDeploymentVersion
     chatGptDeploymentCapacity: chatGptDeploymentCapacity
+    chatGptSkuName: chatGptSkuName
+    keyVaultName: keyVaultName
     embeddingModelName: embeddingModelName
     embeddingDeploymentName: embeddingDeploymentName
     embeddingDeploymentVersion: embeddingDeploymentVersion
     embeddingDeploymentCapacity: embeddingDeploymentCapacity
-    embeddingDimensions: embeddingDimensions
-    gpt4vModelName: gpt4vModelName
-    gpt4vModelVersion: gpt4vModelVersion
+    embeddingSkuName: embeddingSkuName
     openAiDeploymentName: openAiDeploymentName
-    useGPT4V: useGPT4V
   }
   dependsOn: [
     keyvault

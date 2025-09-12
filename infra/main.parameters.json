@@ -23,6 +23,9 @@
     "useFreeLimit": {
       "value": true
     },
+    "cognitiveservicesname": {
+      "value": "${AZURE_OPENAI_ACCOUNT_NAME}"
+    },
     "chatGptDeploymentVersion": {
       "value": "${chatGptDeploymentVersion}"
     },
@@ -32,8 +35,23 @@
     "chatGptModelName": {
       "value": "${chatGptModelName}"
     },
-    "chatGptDeploymentCapacity": {
-      "value": "${chatGptDeploymentCapacity}"
+    "availableChatGptDeploymentCapacity": {
+      "value": "${availableChatGptDeploymentCapacity}"
+    },
+    "embeddingDeploymentVersion": {
+      "value": "${embeddingDeploymentVersion}"
+    },
+    "embeddingSkuName": {
+      "value": "${embeddingSkuName}"
+    },
+    "embeddingModelName": {
+      "value": "${embeddingModelName}"
+    },
+    "availableEmbeddingDeploymentCapacity": {
+      "value": "${availableEmbeddingDeploymentCapacity}"
+    },
+    "cognitiveservicesLocation": {
+      "value": "${AZURE_LOCATION}"
     }
   }
 }
