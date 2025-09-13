@@ -19,7 +19,8 @@
             "extensions": [
                 "ms-azuretools.vscode-bicep",
                 "ms-python.python",
-                "ms-vscode.powershell"
+                "ms-vscode.powershell",
+                "redis.redis-for-vscode"
             ],
             "settings": {
                 // Provide a stable default PowerShell name that matches the configured additional path below

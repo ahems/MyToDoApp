@@ -21,7 +21,7 @@
       "value": false
     },
     "useFreeLimit": {
-      "value": true
+      "value": false
     },
     "cognitiveservicesname": {
       "value": "${AZURE_OPENAI_ACCOUNT_NAME}"

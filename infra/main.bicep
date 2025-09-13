@@ -27,7 +27,7 @@ param useAuthorizationOnAPI bool = false
 @description('Wether to restore the OpenAI service or not. If set to true, the OpenAI service will be restored from a soft-deleted backup. Use this only if you have previously deleted the OpenAI service created with this script, as you will need to restore it.')
 param restoreOpenAi bool
 param tenantId string = subscription().tenantId
-param useFreeLimit bool = true
+param useFreeLimit bool
 param webAppClientId string
 @secure()
 param webAppClientSecret string
@@ -173,6 +173,7 @@ module buildTaskForWeb 'modules/task.bicep' = {
     repoName: 'todoapp'
     taskBuildVersionTag: 'latest'
     useAuthorization: false
+    identityName: identityName
   }
   dependsOn: [
     continuousDeploymentForWebApp
@@ -189,6 +190,7 @@ module buildTaskForAPI 'modules/task.bicep' = {
     repoName: 'todoapi'
     taskBuildVersionTag: 'latest'
     useAuthorization: useAuthorizationOnAPI
+    identityName: identityName
   }
   dependsOn: [
     continuousDeploymentForApiApp
@@ -254,6 +256,7 @@ module apiapp 'modules/apiapp.bicep' = {
     appServicePlanName:appServicePlanName
     authEnabled: useAuthorizationOnAPI
     allowedIpAddresses: webapp.outputs.outgoingIpAddresses
+    keyVaultName:keyVaultName
   }
   dependsOn: [
     database
