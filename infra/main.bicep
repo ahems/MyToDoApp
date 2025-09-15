@@ -42,6 +42,7 @@ param embeddingDeploymentName string = 'embedding'
 param embeddingDeploymentVersion string
 param embeddingSkuName string
 param availableEmbeddingDeploymentCapacity int
+param deployToWebAppInsteadOfContainerApp bool = false 
 
 var apiAppURL = 'https://${apiAppName}.azurewebsites.net/graphql/'
 var chatGptDeploymentCapacity = availableChatGptDeploymentCapacity / 10
@@ -142,6 +143,9 @@ module acr 'modules/acr.bicep' = {
   ]
 }
 
+// Surface ACR endpoint for azd environment injection
+output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.outputs.loginServer
+
 module identity 'modules/identity.bicep' = {
   name: 'Deploy-User-Managed-Identity'
   params: {
@@ -163,7 +167,37 @@ module appinsights 'modules/applicationinsights.bicep' = {
   ]
 }
 
-module buildTaskForWeb 'modules/task.bicep' = {
+module containerApp 'modules/aca.bicep' = if (!deployToWebAppInsteadOfContainerApp) {
+  name: 'Deploy-Container-App'
+  params: {
+    keyVaultName:keyVaultName
+    location: location
+    appInsightsName:appInsightsName
+    appName:'todoapp-app-${resourceToken}'
+    apiName:'todoapp-api-${resourceToken}'
+    containerAppEnvName:'todoapp-env-${resourceToken}'
+    workspaceName:workspaceName
+    openAiName:cognitiveservicesname    
+    containerRegistryName:acrName
+    identityName:identityName
+    appImageNameAndVersion:appImageNameAndVersion
+    apiImageNameAndVersion:apiImageNameAndVersion
+    openAiDeploymentName:openAiDeploymentName
+    minReplica:1
+    maxReplica:3
+    sqlConnectionString: database.outputs.connectionString
+    revisionSuffix:'v1'
+  }
+  dependsOn: [
+    appinsights
+    identity
+    cognitiveservices
+    acr
+    keyvault
+  ]
+}
+
+module buildTaskForWeb 'modules/task.bicep' = if (deployToWebAppInsteadOfContainerApp) {
   name: 'Deploy-Build-Task-For-Web-To-ACR'
   params: {
     acrName: acrName
@@ -180,7 +214,7 @@ module buildTaskForWeb 'modules/task.bicep' = {
   ]
 }
 
-module buildTaskForAPI 'modules/task.bicep' = {
+module buildTaskForAPI 'modules/task.bicep' = if (deployToWebAppInsteadOfContainerApp) {
   name: 'Deploy-Build-Task-For-API-To-ACR'
   params: {
     acrName: acrName
@@ -197,7 +231,7 @@ module buildTaskForAPI 'modules/task.bicep' = {
   ]
 }
 
-module appServicePlan  'modules/appserviceplan.bicep' = {
+module appServicePlan  'modules/appserviceplan.bicep' = if (deployToWebAppInsteadOfContainerApp) {
   name: 'Deploy-App-Service-Plan'
   params: {
     appServicePlanName:appServicePlanName
@@ -206,7 +240,7 @@ module appServicePlan  'modules/appserviceplan.bicep' = {
   }
 }
 
-module webapp  'modules/webapp.bicep' = {
+module webapp  'modules/webapp.bicep' = if (deployToWebAppInsteadOfContainerApp) {
   name: 'Deploy-Web-App'
   params: {
     keyVaultName:keyVaultName
@@ -227,7 +261,7 @@ module webapp  'modules/webapp.bicep' = {
   ]
 }
 
-module continuousDeploymentForWebApp 'modules/continuous-deployment.bicep' = {
+module continuousDeploymentForWebApp 'modules/continuous-deployment.bicep' = if (deployToWebAppInsteadOfContainerApp) {
   name: 'Configure-CD-For-${webAppName}'
   params: {
     webAppName: webAppName
@@ -243,7 +277,7 @@ module continuousDeploymentForWebApp 'modules/continuous-deployment.bicep' = {
   ]
 }
 
-module apiapp 'modules/apiapp.bicep' = {
+module apiapp 'modules/apiapp.bicep' = if (deployToWebAppInsteadOfContainerApp) {
   name: 'Deploy-API-App'
   params: {
     location: location
@@ -267,7 +301,7 @@ module apiapp 'modules/apiapp.bicep' = {
   ]
 }
 
-module continuousDeploymentForApiApp 'modules/continuous-deployment.bicep' = {
+module continuousDeploymentForApiApp 'modules/continuous-deployment.bicep' = if (deployToWebAppInsteadOfContainerApp) {
   name: 'Configure-CD-For-${apiAppName}'
   params: {
     webAppName: apiAppName

@@ -61,3 +61,5 @@ resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' 
 
 
 output name string = acr.name
+// Expose the registry login server so it can propagate to environment variables via root module output
+output loginServer string = acr.properties.loginServer

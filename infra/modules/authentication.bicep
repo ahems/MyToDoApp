@@ -14,7 +14,7 @@ resource authority 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'AUTHORITY'
   properties: {
-    value: 'https://login.microsoftonline.com/${tenantId}'
+    value: '${environment().authentication.loginEndpoint}${tenantId}'
     contentType: 'text/plain'
   }
 }

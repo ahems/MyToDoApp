@@ -29,6 +29,9 @@ resource appServicePlan 'Microsoft.Web/serverfarms@2024-04-01' existing = {
 resource webApp 'Microsoft.Web/sites@2024-04-01' = {
   name: webAppName
   location: location
+  tags: {
+    'azd-service-name': 'my-to-do-app'
+  }
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {

@@ -43,6 +43,9 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
 resource apiApp 'Microsoft.Web/sites@2024-04-01' = {
   name: apiAppName
   location: location
+  tags: {
+    'azd-service-name': 'my-to-do-api'
+  }
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
@@ -115,7 +118,8 @@ resource authSettings 'Microsoft.Web/sites/config@2024-04-01' = if(authEnabled) 
         registration: {
           clientId: apiAppClientId
           clientSecretSettingName: 'CLIENT_SECRET'
-          openIdIssuer: 'https://login.microsoftonline.com/${tenantId}/v2.0'
+          // Use environment() to avoid hardcoding public cloud authority host
+          openIdIssuer: '${environment().authentication.loginEndpoint}${tenantId}/v2.0'
         }
         login: {
           loginParameters: [
