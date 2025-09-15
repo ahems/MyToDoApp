@@ -260,3 +260,5 @@ resource apiurl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
     contentType: 'text/plain'
   }
 }
+
+output APP_REDIRECT_URI string = 'https://${containerApp.properties.configuration.ingress.fqdn}'

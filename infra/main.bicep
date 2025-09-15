@@ -43,6 +43,8 @@ param embeddingDeploymentVersion string
 param embeddingSkuName string
 param availableEmbeddingDeploymentCapacity int
 param deployToWebAppInsteadOfContainerApp bool = false 
+@description('Deterministic revision suffix for Container Apps to avoid hard-coding while remaining idempotent across repeated deployments.')
+param revisionSuffix string = 'rev-${resourceToken}'
 
 var apiAppURL = 'https://${apiAppName}.azurewebsites.net/graphql/'
 var chatGptDeploymentCapacity = availableChatGptDeploymentCapacity / 10
@@ -186,7 +188,7 @@ module containerApp 'modules/aca.bicep' = if (!deployToWebAppInsteadOfContainerA
     minReplica:1
     maxReplica:3
     sqlConnectionString: database.outputs.connectionString
-    revisionSuffix:'v1'
+    revisionSuffix:revisionSuffix
   }
   dependsOn: [
     appinsights
@@ -196,6 +198,8 @@ module containerApp 'modules/aca.bicep' = if (!deployToWebAppInsteadOfContainerA
     keyvault
   ]
 }
+
+output APP_REDIRECT_URI string = deployToWebAppInsteadOfContainerApp ? 'https://${webAppName}.azurewebsites.net/getAToken' : containerApp!.outputs.APP_REDIRECT_URI
 
 module buildTaskForWeb 'modules/task.bicep' = if (deployToWebAppInsteadOfContainerApp) {
   name: 'Deploy-Build-Task-For-Web-To-ACR'
@@ -289,7 +293,7 @@ module apiapp 'modules/apiapp.bicep' = if (deployToWebAppInsteadOfContainerApp) 
     apiImageNameAndVersion:apiImageNameAndVersion
     appServicePlanName:appServicePlanName
     authEnabled: useAuthorizationOnAPI
-    allowedIpAddresses: webapp.outputs.outgoingIpAddresses
+  allowedIpAddresses: webapp!.outputs.outgoingIpAddresses
     keyVaultName:keyVaultName
   }
   dependsOn: [
