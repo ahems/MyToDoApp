@@ -7,6 +7,7 @@ param customSubDomainName string = name
 param kind string = 'OpenAI'
 param openAiDeploymentName string = 'chat'
 param restoreOpenAi bool = false
+param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 
 @allowed([ 'Enabled', 'Disabled' ])
 param publicNetworkAccess string = 'Enabled'
@@ -74,11 +75,21 @@ var deployments = [
   }
 ]
 
-resource account 'Microsoft.CognitiveServices/accounts@2024-10-01' = {
+resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
+  name: identityName
+}
+
+resource account 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
   name: name
   location: location
   tags: tags
   kind: kind
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${azidentity.id}': {}
+    }
+  }
   properties: {
     customSubDomainName: customSubDomainName
     publicNetworkAccess: publicNetworkAccess

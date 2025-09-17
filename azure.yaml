@@ -2,12 +2,14 @@
 
 name: my-to-do-app
 hooks:
-  preprovision:
+  preup:
     shell: pwsh
-    run: ./scripts/create-app-and-secret.ps1
+    run: ./scripts/preup.ps1
+    interactive: true
   postprovision:
     shell: pwsh
     run: ./scripts/configure-database.ps1
+    interactive: true
 services:
     my-to-do-app:
         project: .
@@ -17,9 +19,6 @@ services:
             path: dockerfile
             remoteBuild: true
         hooks:
-            preprovision:
-              shell: pwsh
-              run: ./scripts/fetch-openai-models.ps1
             postprovision:
               shell: pwsh
               run: ./scripts/update-app.ps1
@@ -30,7 +29,18 @@ services:
         docker:
             path: dockerfile
             remoteBuild: true
+    database-test:
+        project: ./tests
+        host: containerapp
+        language: python
+        environmentVariables:
+          SQL_SERVER_NAME: ${SQL_SERVER_NAME}
+          SQL_DATABASE_NAME: todo
+          DB_TABLE: dbo.todo
+          LOG_VERBOSITY: Normal
+        docker:
+            path: dockerfile
+            remoteBuild: true
 infra:
   provider: bicep
   path: ./infra
-  module: deploy.bicep

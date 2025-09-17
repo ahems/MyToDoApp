@@ -32,9 +32,6 @@ var sqlDatabaseName = 'todo'
 // Using deterministic FQDN pattern rather than module output to keep secret name stable.
 var sqlServerFqdn = '${sqlServerName}${environment().suffixes.sqlServerHostname}'
 
-// Module reference (pin version). Update version if a newer stable release is required.
-// NOTE: Adjust version to the latest stable available in the public Bicep registry if needed.
-// Using pinned AVM module version for Azure SQL Server (update when upgrading AVM set)
 module sqlServerModule 'br/public:avm/res/sql/server:0.14.0' = {
   name: 'sqlServerDeployment'
   params: {
@@ -87,8 +84,9 @@ module sqlServerModule 'br/public:avm/res/sql/server:0.14.0' = {
   }
 }
 
-// Connection string mirrors previous format (Active Directory Default).
-var connectionString = 'Server=tcp:${sqlServerFqdn},1433;Initial Catalog=${sqlDatabaseName};Authentication=Active Directory Default;User Id=${azidentity.properties.clientId}'
+// Connection string mirrors previous format (Active Directory Default). This uses the Managed Identity assigned to the SQL server.
+// This requires the application to also run with an identity that has been granted access to the database
+var connectionString = 'Server=tcp:${sqlServerFqdn},1433;Initial Catalog=${sqlDatabaseName};Authentication=Active Directory Default;'
 
 // Secrets (depend on module to ensure ordering)
 resource server 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {

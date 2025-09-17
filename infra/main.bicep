@@ -43,8 +43,7 @@ param embeddingDeploymentVersion string
 param embeddingSkuName string
 param availableEmbeddingDeploymentCapacity int
 param deployToWebAppInsteadOfContainerApp bool = false 
-@description('Deterministic revision suffix for Container Apps to avoid hard-coding while remaining idempotent across repeated deployments.')
-param revisionSuffix string = 'rev-${resourceToken}'
+param revisionSuffix string = 'latest'
 
 var apiAppURL = 'https://${apiAppName}.azurewebsites.net/graphql/'
 var chatGptDeploymentCapacity = availableChatGptDeploymentCapacity / 10
@@ -82,6 +81,7 @@ module cognitiveservices 'modules/openai.bicep' = {
   params: {
     name: cognitiveservicesname
     location: cognitiveservicesLocation
+    identityName: identityName
     customSubDomainName: cognitiveservicesname
     restoreOpenAi: restoreOpenAi
     chatGptModelName: chatGptModelName
@@ -182,12 +182,11 @@ module containerApp 'modules/aca.bicep' = if (!deployToWebAppInsteadOfContainerA
     openAiName:cognitiveservicesname    
     containerRegistryName:acrName
     identityName:identityName
-    appImageNameAndVersion:appImageNameAndVersion
-    apiImageNameAndVersion:apiImageNameAndVersion
     openAiDeploymentName:openAiDeploymentName
-    minReplica:1
+    minReplica:0
     maxReplica:3
     sqlConnectionString: database.outputs.connectionString
+    sqlServerName: sqlServerName
     revisionSuffix:revisionSuffix
   }
   dependsOn: [

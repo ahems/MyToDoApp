@@ -69,7 +69,7 @@ resource runTask 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
   }
   properties: {
     retentionInterval: 'PT60M'
-    azPowerShellVersion: '7.0.0'
+    azPowerShellVersion: '11.0'
     containerSettings: {
       containerGroupName: containerGroupName
     }
@@ -95,7 +95,9 @@ resource runTask 'Microsoft.Resources/deploymentScripts@2023-08-01' = {
     # az acr task run --name $TASK_NAME --registry $REGISTRY_NAME --no-logs --no-wait
 
     $apiVersion = "2019-04-01"
-    $uri = "https://management.azure.com/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$env:RESOURCE_GROUP_NAME/providers/Microsoft.ContainerRegistry/registries/$env:REGISTRY_NAME/scheduleRun?api-version=$apiVersion"
+    $resourceManager = "${environment().resourceManager}"
+    if ($resourceManager.EndsWith("/")) { $resourceManager = $resourceManager.TrimEnd("/") }
+    $uri = "$resourceManager/subscriptions/$env:SUBSCRIPTION_ID/resourceGroups/$env:RESOURCE_GROUP_NAME/providers/Microsoft.ContainerRegistry/registries/$env:REGISTRY_NAME/scheduleRun?api-version=$apiVersion"
     $body = @{
         taskName = $env:TASK_NAME
         type = "TaskRunRequest"

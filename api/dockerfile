@@ -20,7 +20,12 @@ then dotnet tool run dab -- add todo --source "dbo.ToDo" --permissions "authenti
 else dotnet tool run dab -- add todo --source "dbo.ToDo" --permissions "anonymous:*"; \
 fi 
 
-RUN dotnet tool run dab -- add-telemetry --app-insights-enabled true --app-insights-conn-string "@env('APPLICATIONINSIGHTS_CONNECTION_STRING')"
+# NOTE: Cannot pass @env('VAR') directly on the command line because the .NET host treats
+# arguments starting with @ as response file references. We add a dummy value then
+# replace it in the generated dab-config.json with the @env(...) placeholder so that
+# runtime substitution still happens inside the JSON config.
+RUN dotnet tool run dab add-telemetry --app-insights-enabled true --app-insights-conn-string "DUMMY_AI_CONN_STRING" \
+	&& sed -i "s/\"connection-string\": \"DUMMY_AI_CONN_STRING\"/\"connection-string\": \"@env('APPLICATIONINSIGHTS_CONNECTION_STRING')\"/" dab-config.json
 
 FROM mcr.microsoft.com/azure-databases/data-api-builder
 

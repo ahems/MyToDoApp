@@ -44,7 +44,7 @@ resource configureContinuousDeployment 'Microsoft.Resources/deploymentScripts@20
   }
   properties: {
     retentionInterval: 'PT60M'
-    azPowerShellVersion: '7.0.0'
+    azPowerShellVersion: '11'
     containerSettings: {
       containerGroupName: containerGroupName
     }
@@ -77,6 +77,10 @@ resource configureContinuousDeployment 'Microsoft.Resources/deploymentScripts@20
         name: 'SUBSCRIPTION_ID'
         value: subscription().subscriptionId
       }
+      {
+        name: 'RESOURCE_MANAGER_ENDPOINT'
+        value: environment().resourceManager
+      }
     ]
     scriptContent: '''
       # URI=$(az webapp deployment container config --enable-cd true --name $WEBAPP_NAME --resource-group $RESOURCE_GROUP_NAME --query CI_CD_URL --output tsv)
@@ -89,11 +93,12 @@ resource configureContinuousDeployment 'Microsoft.Resources/deploymentScripts@20
       $webAppName = $env:WEBAPP_NAME
       $location = $env:LOCATION
       $imageName = $env:IMAGE_NAME
+      $resourceManagerEndpoint = $env:RESOURCE_MANAGER_ENDPOINT.TrimEnd('/')
 
-      $uri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Web/sites/$webAppName/config/publishingcredentials/list?api-version=2023-01-01"
+      $uri = "$resourceManagerEndpoint/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.Web/sites/$webAppName/config/publishingcredentials/list?api-version=2023-01-01"
       Write-Output $uri
       
-      $acruri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.ContainerRegistry/registries/$registryName/webhooks/$webhookName" + "?api-version=2023-11-01-preview"
+      $acruri = "$resourceManagerEndpoint/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.ContainerRegistry/registries/$registryName/webhooks/$webhookName?api-version=2023-11-01-preview"
       Write-Output $acruri
 
       $secureToken = (Get-AzAccessToken -AsSecureString).Token

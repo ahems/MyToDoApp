@@ -42,10 +42,10 @@
       "value": "${embeddingDeploymentVersion}"
     },
     "embeddingSkuName": {
-      "value": "${embeddingSkuName}"
+      "value": "${embeddingDeploymentSkuName}"
     },
     "embeddingModelName": {
-      "value": "${embeddingModelName}"
+      "value": "${embeddingDeploymentModelName}"
     },
     "availableEmbeddingDeploymentCapacity": {
       "value": "${availableEmbeddingDeploymentCapacity}"
