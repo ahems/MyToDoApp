@@ -42,11 +42,6 @@ $sqlDatabaseName = 'todo'
 # Get tenant ID from azd environment (trim to avoid stray newlines)
 $tenantId = (azd env get-value 'TENANT_ID' 2>$null).Trim()
 
-$SubscriptionId = (azd env get-value 'AZURE_SUBSCRIPTION_ID' 2>$null).Trim()
-if( $SubscriptionId ) {
-    Update-AzConfig -DefaultSubscriptionForLogin $SubscriptionId
-}
-
 # Authenticate if not already logged in
 if (-not (Get-AzContext -ErrorAction SilentlyContinue)) {
     Write-Output "Connecting to Azure..."

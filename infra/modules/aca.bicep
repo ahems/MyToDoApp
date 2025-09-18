@@ -127,8 +127,15 @@ resource dbTest 'Microsoft.App/containerApps@2024-03-01' = {
             { name: 'DB_TABLE'
               value: 'dbo.todo'
             }
+            { name: 'MI_INITIAL_DELAY_SECONDS'
+              value: '15'
+            }
             { name: 'LOG_VERBOSITY'
               value: 'Normal' 
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: azidentity.properties.clientId
             }
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'

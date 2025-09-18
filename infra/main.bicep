@@ -43,7 +43,8 @@ param embeddingDeploymentVersion string
 param embeddingSkuName string
 param availableEmbeddingDeploymentCapacity int
 param deployToWebAppInsteadOfContainerApp bool = false 
-param revisionSuffix string = 'latest'
+// Generate a short, unique revision suffix per deployment to avoid conflicts
+param revisionSuffix string = toLower(substring(replace(newGuid(),'-',''), 0, 8))
 
 var apiAppURL = 'https://${apiAppName}.azurewebsites.net/graphql/'
 var chatGptDeploymentCapacity = availableChatGptDeploymentCapacity / 10

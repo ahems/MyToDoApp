@@ -26,26 +26,118 @@ $verbosity     = Get-EnvOrDefault -Name 'LOG_VERBOSITY' -Default 'Normal'
 
 Write-Host "[dbtest] Target server: $fqdn / database: $dbName / table: $tableName" -ForegroundColor DarkCyan
 
-# Acquire token using Managed Identity (in Container Apps the UAMI must be attached)
-Write-Host "[dbtest] Acquiring access token for https://database.windows.net/" -ForegroundColor Cyan
-try {
-  $token = (Get-AzAccessToken -ResourceUrl 'https://database.windows.net/').Token
-  if (-not $token) { throw 'Empty token' }
-  Write-Host "[dbtest] Access token obtained." -ForegroundColor Green
-} catch {
-  Write-Error "[dbtest] Failed to obtain MI token: $($_.Exception.Message)"; exit 11
+# Acquire token using Managed Identity via IMDS (no Az modules required)
+Write-Host "[dbtest] Acquiring access token for https://database.windows.net/ (Managed Identity)" -ForegroundColor Cyan
+function Get-MiAccessToken {
+  param([Parameter(Mandatory)][string]$Resource,[int]$Retries=3)
+  $clientId = [Environment]::GetEnvironmentVariable('AZURE_CLIENT_ID')
+  $hasAppSvcEndpoint = -not [string]::IsNullOrWhiteSpace($env:IDENTITY_ENDPOINT) -and -not [string]::IsNullOrWhiteSpace($env:IDENTITY_HEADER)
+  function Write-Dbg([string]$m){ if ($script:verbosity -eq 'Debug') { Write-Host "[debug] $m" -ForegroundColor DarkGray } }
+
+  # Initial delay to give Managed Identity time to warm up after container start
+  $initialDelayEnv = [Environment]::GetEnvironmentVariable('MI_INITIAL_DELAY_SECONDS')
+  $initialDelay = 0
+  if ($initialDelayEnv -and [int]::TryParse($initialDelayEnv, [ref]$null)) { $initialDelay = [int]$initialDelayEnv } else { $initialDelay = 15 }
+  if ($initialDelay -gt 0) {
+    Write-Host ("[dbtest] Waiting {0}s before first token attempt to allow Managed Identity to initialize..." -f $initialDelay) -ForegroundColor DarkGray
+    Start-Sleep -Seconds $initialDelay
+  }
+
+  if ([string]::IsNullOrWhiteSpace($clientId)) {
+    Write-Warning "[dbtest] AZURE_CLIENT_ID not set. Using default identity selection for the environment."
+  } else {
+    Write-Host "[dbtest] Using user-assigned identity (AZURE_CLIENT_ID=$clientId) for token request." -ForegroundColor DarkCyan
+  }
+
+  for ($i=1; $i -le $Retries; $i++) {
+    try {
+      if ($hasAppSvcEndpoint) {
+        # Container Apps / App Service endpoint (preferred when available)
+        $base = $env:IDENTITY_ENDPOINT
+        $qs = "resource={0}&api-version=2019-08-01" -f [System.Uri]::EscapeDataString($Resource)
+        if (-not [string]::IsNullOrWhiteSpace($clientId)) { $qs += "&client_id={0}" -f [System.Uri]::EscapeDataString($clientId) }
+        $url = "{0}?{1}" -f $base, $qs
+        $headers = @{ 'X-IDENTITY-HEADER' = $env:IDENTITY_HEADER }
+        Write-Host "[dbtest] Requesting token via IDENTITY_ENDPOINT." -ForegroundColor DarkGray
+        $u = [System.Uri]$url
+        $qKeys = ($u.Query.TrimStart('?').Split('&') | ForEach-Object { ($_ -split '=',2)[0] }) -join ','
+        Write-Dbg ("Token URL host={0} path={1} queryKeys=[{2}]" -f $u.Host, $u.AbsolutePath, $qKeys)
+        $resp = Invoke-RestMethod -Method GET -Uri $url -Headers $headers -TimeoutSec 20
+      } else {
+        # IMDS fallback (AKS/ACI/VMs)
+        $imds = 'http://169.254.169.254/metadata/identity/oauth2/token'
+        $headers = @{ Metadata = 'true' }
+        # Ensure no proxy intercepts the link-local IMDS call
+        if ($env:NO_PROXY) { $env:NO_PROXY += ',169.254.169.254' } else { $env:NO_PROXY = '169.254.169.254' }
+        Write-Dbg ("NO_PROXY set to: {0}" -f $env:NO_PROXY)
+        $qs = @{
+          'api-version' = '2019-08-01'
+          'resource'    = $Resource
+        }
+        if (-not [string]::IsNullOrWhiteSpace($clientId)) { $qs['client_id'] = $clientId }
+        $query = ($qs.GetEnumerator() | ForEach-Object { [System.String]::Format('{0}={1}',[System.Uri]::EscapeDataString($_.Key),[System.Uri]::EscapeDataString([string]$_.Value)) }) -join '&'
+        $url = '{0}?{1}' -f $imds, $query
+        Write-Host "[dbtest] Requesting token via IMDS." -ForegroundColor DarkGray
+        $u = [System.Uri]$url
+        $qKeys = ($u.Query.TrimStart('?').Split('&') | ForEach-Object { ($_ -split '=',2)[0] }) -join ','
+        Write-Dbg ("Token URL host={0} path={1} queryKeys=[{2}]" -f $u.Host, $u.AbsolutePath, $qKeys)
+        $resp = Invoke-RestMethod -Method GET -Uri $url -Headers $headers -TimeoutSec 20
+      }
+
+      if ($resp.access_token) {
+        Write-Dbg ("Token response fields: {0}" -f (($resp.PSObject.Properties.Name -join ', ')))
+        return $resp.access_token
+      }
+      throw "No access_token field in token response."
+    } catch {
+      $status = $null
+      try { if ($_.Exception.Response) { $status = $_.Exception.Response.StatusCode.value__ } } catch {}
+      if ($i -ge $Retries) { throw }
+      Write-Warning ("[dbtest] Token request failed (attempt {0}){1}: {2}. Retrying..." -f $i, ($status ? " [HTTP $status]" : ''), $_.Exception.Message)
+      Start-Sleep -Seconds ([int][Math]::Pow(2,$i))
+    }
+  }
 }
 
-# Load SQL client
-$clientType = [Type]::GetType('Microsoft.Data.SqlClient.SqlConnection, Microsoft.Data.SqlClient')
-if (-not $clientType) { $clientType = [Type]::GetType('System.Data.SqlClient.SqlConnection, System.Data') }
-if (-not $clientType) { Write-Error '[dbtest] No SQL client assembly available'; exit 12 }
+try {
+  $token = Get-MiAccessToken -Resource 'https://database.windows.net/'
+  if (-not $token) { throw 'Empty token from IMDS' }
+  Write-Host "[dbtest] Access token obtained." -ForegroundColor Green
+} catch {
+  Write-Error "[dbtest] Failed to obtain MI token via IMDS: $($_.Exception.Message)"; exit 11
+}
+
+# Load SQL client (prefer Microsoft.Data.SqlClient, fallback to System.Data.SqlClient)
+function Get-SqlClientType {
+  try { return [Type]::GetType('Microsoft.Data.SqlClient.SqlConnection, Microsoft.Data.SqlClient', $false) } catch { }
+  try { Add-Type -AssemblyName 'Microsoft.Data.SqlClient' -ErrorAction SilentlyContinue | Out-Null; return [Microsoft.Data.SqlClient.SqlConnection] } catch { }
+  try { return [Type]::GetType('System.Data.SqlClient.SqlConnection, System.Data', $false) } catch { }
+  try { Add-Type -AssemblyName 'System.Data' -ErrorAction SilentlyContinue | Out-Null; return [System.Data.SqlClient.SqlConnection] } catch { }
+  return $null
+}
+$clientType = Get-SqlClientType
+if (-not $clientType) {
+  Write-Error '[dbtest] No SQL client assembly available (Microsoft.Data.SqlClient or System.Data.SqlClient). Consider adding Microsoft.Data.SqlClient to the image.'
+  exit 12
+}
 
 $connStr = "Server=$fqdn;Database=$dbName;Encrypt=True;TrustServerCertificate=False;"
 $conn = [Activator]::CreateInstance($clientType, $connStr)
 $accessTokenProp = $clientType.GetProperty('AccessToken')
-if (-not $accessTokenProp) { Write-Error '[dbtest] SQL client lacks AccessToken property'; exit 13 }
-$accessTokenProp.SetValue($conn, $token)
+if ($accessTokenProp) {
+  $accessTokenProp.SetValue($conn, $token)
+} else {
+  # Some older clients don’t expose AccessToken; try using IntegratedSecurity/Authentication keyword path
+  # Note: This path may not work with UAMI tokens; prefer Microsoft.Data.SqlClient when possible
+  Write-Warning '[dbtest] SQL client type does not expose AccessToken; attempting connection with Authentication=Active Directory Access Token.'
+  try {
+    $conn.Close() | Out-Null
+  } catch {}
+  $connStr = "Server=$fqdn;Database=$dbName;Encrypt=True;TrustServerCertificate=False;Authentication=Active Directory Access Token;"
+  $conn = [Activator]::CreateInstance($clientType, $connStr)
+  # Try to set AccessToken via dynamic since property wasn’t discovered earlier
+  try { $conn.AccessToken = $token } catch { Write-Error '[dbtest] Unable to set AccessToken on SQL client; install Microsoft.Data.SqlClient in the image.'; exit 13 }
+}
 
 try { $conn.Open(); Write-Host '[dbtest] SQL connection succeeded.' -ForegroundColor Green } catch { Write-Error "[dbtest] SQL connection failed: $($_.Exception.Message)"; exit 14 }
 
@@ -107,8 +199,24 @@ Write-Host ("[dbtest] Final row count in {0}: {1}" -f $tableName,$rowCount) -For
 # Roles insight (if permitted)
 Write-Host "[dbtest] Enumerating current database roles for this principal (if permitted)" -ForegroundColor Cyan
 try {
-  $roles = Invoke-SqlTable -Sql "SELECT r.name AS RoleName FROM sys.database_role_members drm JOIN sys.database_principals r ON drm.role_principal_id=r.principal_id JOIN sys.database_principals m ON drm.member_principal_id=m.principal_id WHERE m.name = ORIGINAL_LOGIN();"
-  if ($roles.Rows.Count -gt 0) { $roles | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Host "[role] $_" } } else { Write-Host "[dbtest] No roles enumerated (permission or mapping issue)." }
+  # Use USER_NAME() for current database principal; more reliable for contained users and MI
+  $rolesResult = Invoke-SqlTable -Sql "SELECT r.name AS RoleName FROM sys.database_role_members drm JOIN sys.database_principals r ON drm.role_principal_id=r.principal_id JOIN sys.database_principals m ON drm.member_principal_id=m.principal_id WHERE m.name = USER_NAME();"
+  if ($rolesResult -is [System.Data.DataTable]) {
+    if ($rolesResult.Rows.Count -gt 0) {
+      $rolesResult | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Host "[role] $_" }
+    } else {
+      Write-Host "[dbtest] No roles enumerated (permission or mapping issue)."
+    }
+  } elseif ($null -eq $rolesResult) {
+    Write-Host "[dbtest] No roles enumerated (permission or mapping issue)."
+  } else {
+    $items = @($rolesResult)
+    if ($items.Count -gt 0) {
+      $items | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Host "[role] $_" }
+    } else {
+      Write-Host "[dbtest] No roles enumerated (permission or mapping issue)."
+    }
+  }
 } catch { Write-Warning "[dbtest] Could not enumerate roles: $($_.Exception.Message)" }
 
 try { $conn.Close() } catch {}

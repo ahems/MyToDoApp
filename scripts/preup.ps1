@@ -61,8 +61,7 @@ function Ensure-AzLogin {
 		if ((Get-AzContext).Subscription.Id -ne $SubscriptionId) {
 			Write-Host "Switching subscription context to $SubscriptionId" -ForegroundColor DarkCyan
 			Set-AzContext -Subscription $SubscriptionId | Out-Null
-		}
-		Update-AzConfig -DefaultSubscriptionForLogin $SubscriptionId | Out-Null
+		}		
 	}
 }
 
