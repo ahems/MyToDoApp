@@ -19,9 +19,10 @@ services:
             path: dockerfile
             remoteBuild: true
         hooks:
-            postprovision:
+            postdeploy:
               shell: pwsh
               run: ./scripts/update-app.ps1
+              interactive: true
     my-to-do-api:
         project: ./api
         host: containerapp
