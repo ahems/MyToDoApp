@@ -21,8 +21,8 @@ param maxReplica int = 3
 param revisionSuffix string
 @secure()
 param sqlConnectionString string
-param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
-
+@secure()
+param redisConnectionString string
 
 resource openAi 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
   name: openAiName
@@ -73,80 +73,6 @@ resource containerAppEnv 'Microsoft.App/managedEnvironments@2023-11-02-preview' 
       logAnalyticsConfiguration: {
         customerId: workspace.properties.customerId
         sharedKey: workspace.listKeys().primarySharedKey
-      }
-    }
-  }
-}
-
-resource dbTest 'Microsoft.App/containerApps@2024-03-01' = {
-  name: 'todoapp-dbtest-${uniqueString(resourceGroup().id)}'
-  location: location
-  identity: {
-    type: 'UserAssigned'
-    userAssignedIdentities: {
-      '${azidentity.id}': {}
-    }
-  }
-  tags: {
-    'azd-service-name': 'database-test'
-  }
-  properties: {
-    managedEnvironmentId: containerAppEnv.id
-    configuration: {
-      ingress: {
-        external: false
-        targetPort: 80
-        allowInsecure: false
-        traffic: [ { latestRevision: true, weight: 100 } ]
-      }
-      registries: [
-        {
-          identity: azidentity.id
-          server: acr.properties.loginServer
-        }
-      ]
-    }
-    template: {
-      containers: [
-        {
-          name: 'database-test'
-          image: bootstrapImage
-          resources: {
-            cpu: json('0.5')
-            memory: '1.0Gi'
-          }
-          env: [
-            { 
-              name: 'SQL_SERVER_NAME'
-              value: sqlServerName 
-            }
-            {
-              name: 'SQL_DATABASE_NAME'
-              value: 'todo' 
-            }
-            { name: 'DB_TABLE'
-              value: 'dbo.todo'
-            }
-            { name: 'MI_INITIAL_DELAY_SECONDS'
-              value: '15'
-            }
-            { name: 'LOG_VERBOSITY'
-              value: 'Normal' 
-            }
-            {
-              name: 'AZURE_CLIENT_ID'
-              value: azidentity.properties.clientId
-            }
-            {
-              name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
-              value: appInsights.properties.ConnectionString
-            }
-          ]
-        }
-      ]
-      scale: {
-        minReplicas: 0
-        maxReplicas: 1
       }
     }
   }
@@ -228,6 +154,10 @@ resource frontEnd 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'KEY_VAULT_NAME'
               value: keyVaultName
+            }
+            {
+              name: 'REDIS_CONNECTION_STRING'
+              value: redisConnectionString
             }
             {
               name: 'AZURE_CLIENT_ID'
@@ -319,6 +249,10 @@ resource middleTier 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'DATABASE_CONNECTION_STRING'
               value: sqlConnectionString
+            }
+            {
+              name: 'REDIS_CONNECTION_STRING'
+              value: redisConnectionString
             }
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'

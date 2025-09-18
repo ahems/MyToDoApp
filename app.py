@@ -4,6 +4,9 @@ from re import S
 from httpx import get
 import identity.web
 import redis
+from redis.connection import SSLConnection
+from urllib.parse import urlparse
+import time
 import secrets
 import requests
 from flask import Flask, render_template, request, redirect, url_for, session
@@ -28,6 +31,7 @@ app = Flask(__name__)
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
 AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
+REDIS_CONNECTION_STRING = os.environ.get("REDIS_CONNECTION_STRING")
 IS_LOCALHOST = os.environ.get("IS_LOCALHOST", "false").lower() == "true"
 app_insights_connection_string = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
 
@@ -46,13 +50,11 @@ if AZURE_CLIENT_ID:
     AUTHORITY=client.get_secret("AUTHORITY").value
     CLIENTID=client.get_secret("CLIENTID").value;
     CLIENTSECRET=client.get_secret("CLIENTSECRET").value;
-    REDIS_CONNECTION_STRING=client.get_secret("REDIS-CONNECTION-STRING").value;
 else:
     print('Using Environment Variables');
     AUTHORITY=os.environ.get("AUTHORITY");
     CLIENTID=os.environ.get("CLIENTID");
     CLIENTSECRET=os.environ.get("CLIENTSECRET");
-    REDIS_CONNECTION_STRING=os.environ.get("REDIS_CONNECTION_STRING");
 
 redirect_uri = os.environ.get("REDIRECT_URI");
 if not redirect_uri:
@@ -88,11 +90,80 @@ def startup_probe():
         # During cold start, MI can take a few seconds to be available.
         return f"waiting for managed identity: {type(ex).__name__}", 503
 
+def _parse_redis_url(url: str):
+    parsed = urlparse(url)
+    host = parsed.hostname
+    port = parsed.port or 6380
+    # Username is the objectIdAlias (or objectId) for Entra auth
+    username = parsed.username
+    # DB index from path, default 0
+    try:
+        db = int(parsed.path.lstrip('/') or 0)
+    except Exception:
+        db = 0
+    ssl_required = parsed.scheme == 'rediss'
+    if not host:
+        raise ValueError('REDIS_CONNECTION_STRING is invalid: host missing')
+    if not username:
+        raise ValueError('REDIS_CONNECTION_STRING must include username (objectId or alias) for Entra auth')
+    return host, port, username, db, ssl_required
+
+
+class EntraRedisSSLConnection(SSLConnection):
+    """An SSL-enabled redis-py connection that authenticates using a Microsoft Entra token.
+
+    This subclass ensures TLS is used without relying on the 'ssl' kwarg, which is not
+    accepted by AbstractConnection in redis-py 5.x. It refreshes tokens on (re)connect.
+    """
+
+    def __init__(self, *args, credential: object, username: str, **kwargs):
+        self._credential = credential
+        self._aad_scope = 'https://redis.azure.com/.default'
+        self._aad_username = username
+        self._cached_token = None
+        self._cached_exp = 0
+        # Do not pass unknown kwargs like 'ssl' to the base class
+        super().__init__(*args, **kwargs)
+
+    def _get_token(self) -> str:
+        now = int(time.time())
+        if not self._cached_token or now > (self._cached_exp - 300):
+            token = self._credential.get_token(self._aad_scope)
+            self._cached_token = token.token
+            self._cached_exp = getattr(token, 'expires_on', now + 3600)
+        return self._cached_token
+
+    def on_connect(self):
+        self.username = self._aad_username
+        self.password = self._get_token()
+        return super().on_connect()
+
+
 # Configure Session Storage
 if REDIS_CONNECTION_STRING:
-    print('Using Redis Cache to Store Session Data')
+    print('Using Redis Cache to Store Session Data (Entra auth)')
+    host, port, username, db, ssl_required = _parse_redis_url(REDIS_CONNECTION_STRING)
+    # Enforce TLS-only usage
+    if not ssl_required:
+        raise ValueError('REDIS_CONNECTION_STRING must use rediss:// (TLS)')
+    conn_cls = EntraRedisSSLConnection
+    # Build a connection pool without passing unsupported kwargs like 'ssl' to the connection
+    pool = redis.ConnectionPool(
+        connection_class=conn_cls,
+        host=host,
+        port=port,
+        db=db,
+        credential=credential,
+        username=username,
+    )
     app.config['SESSION_TYPE'] = 'redis'
-    app.config['SESSION_REDIS'] = redis.from_url(REDIS_CONNECTION_STRING)
+    # Pass health/retry options to the client instead of the pool to avoid invalid kwargs
+    app.config['SESSION_REDIS'] = redis.Redis(
+        connection_pool=pool,
+        health_check_interval=30,
+        retry_on_timeout=True,
+        socket_keepalive=True,
+    )
 else:
     print('Using File System to Store Session Data')
     app.config['SESSION_TYPE'] = 'filesystem'

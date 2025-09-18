@@ -30,18 +30,6 @@ services:
         docker:
             path: dockerfile
             remoteBuild: true
-    database-test:
-        project: ./tests
-        host: containerapp
-        language: python
-        environmentVariables:
-          SQL_SERVER_NAME: ${SQL_SERVER_NAME}
-          SQL_DATABASE_NAME: todo
-          DB_TABLE: dbo.todo
-          LOG_VERBOSITY: Normal
-        docker:
-            path: dockerfile
-            remoteBuild: true
 infra:
   provider: bicep
   path: ./infra

@@ -1,4 +1,3 @@
-param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
@@ -18,9 +17,6 @@ resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31
   name: identityName
 }
 
-resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
-  name: keyVaultName
-}
 
 resource redisCache 'Microsoft.Cache/redis@2024-11-01' = {
   name: redisCacheName
@@ -39,14 +35,33 @@ resource redisCache 'Microsoft.Cache/redis@2024-11-01' = {
     }
     enableNonSslPort: false
     minimumTlsVersion: '1.2'
+    // Enable Microsoft Entra (AAD) authentication
+    redisConfiguration: {
+      'aad-enabled': 'true'
+    }
+    // Require Microsoft Entra ID by disabling access key authentication
+    disableAccessKeyAuthentication: true
   }
 }
 
-resource admin 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
-  name: 'REDIS-CONNECTION-STRING'
+// Grant data-plane access to the passed-in user-assigned managed identity using Redis Data Owner policy
+resource redisDataOwnerAssignment 'Microsoft.Cache/redis/accessPolicyAssignments@2024-11-01' = {
+  name: 'todoapp-DataOwner'
+  parent: redisCache
   properties: {
-    value: 'rediss://:${redisCache.listKeys().primaryKey}@${redisCache.properties.hostName}:${redisCache.properties.sslPort}/0'
-    contentType: 'text/plain'
+    // Object ID (principalId) of the user-assigned managed identity
+    objectId: azidentity.properties.principalId
+    // Friendly alias for objectId; also used as the Redis username for token-based auth
+    objectIdAlias: identityName
+    // Built-in data access policy name: Data Owner | Data Contributor | Data Reader
+    accessPolicyName: 'Data Owner'
   }
 }
+
+// Useful outputs for clients using Entra-based authentication
+output redisHostName string = redisCache.properties.hostName
+output redisSslPort int = redisCache.properties.sslPort
+// Alias doubles as the Redis username for token-based auth
+output redisObjectIdAlias string = identityName
+// Entra-style connection string (no password). Client must supply Entra token at runtime.
+output entraConnectionString string = 'rediss://${identityName}@${redisCache.properties.hostName}:${redisCache.properties.sslPort}/0'

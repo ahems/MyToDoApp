@@ -67,12 +67,10 @@ module redis 'modules/redis.bicep' = {
   name: 'Deploy-Redis'
   params: {
     redisCacheName: redisCacheName
-    keyVaultName: keyVaultName
     location: location
     identityName: identityName
   }
   dependsOn: [
-    keyvault
     identity
   ]
 }
@@ -187,8 +185,8 @@ module containerApp 'modules/aca.bicep' = if (!deployToWebAppInsteadOfContainerA
     minReplica:0
     maxReplica:3
     sqlConnectionString: database.outputs.connectionString
-    sqlServerName: sqlServerName
     revisionSuffix:revisionSuffix
+    redisConnectionString: redis.outputs.entraConnectionString
   }
   dependsOn: [
     appinsights
