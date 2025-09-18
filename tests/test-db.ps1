@@ -163,16 +163,41 @@ Write-Host "[dbtest] Verifying table existence: $tableName" -ForegroundColor Cya
 $tableExists = Invoke-SqlScalar -Sql "SELECT CASE WHEN OBJECT_ID('$tableName') IS NULL THEN 0 ELSE 1 END"
 if ($tableExists -ne 1) { Write-Warning "[dbtest] Table $tableName not found." } else { Write-Host "[dbtest] Table $tableName exists." -ForegroundColor Green }
 
-# Insert probe row
-Write-Host "[dbtest] Inserting probe row" -ForegroundColor Cyan
-Invoke-SqlNonQuery -Sql "INSERT INTO $tableName (name, notes, priority, completed) VALUES ('__mi_probe__','from test container',1,0);"
-$probeId = Invoke-SqlScalar -Sql "SELECT TOP (1) id FROM $tableName WHERE name='__mi_probe__' ORDER BY id DESC;"
+# Insert probe row (full schema)
+Write-Host "[dbtest] Inserting probe row (full schema)" -ForegroundColor Cyan
+
+# Prepare values safely
+$json1 = '{"suggestions":["dbtest insert"],"rank":1}'
+$json2 = '{"suggestions":["dbtest update"],"rank":2}'
+$notes1 = 'from test container'
+$notes2 = 'updated from test container'
+$due1 = '2025-09-18T12:00:00Z'
+$due2 = '2025-09-18T13:00:00Z'
+
+$oidValue = Get-EnvOrDefault -Name 'DBTEST_OID' -Default ([Environment]::GetEnvironmentVariable('AZURE_CLIENT_ID'))
+if ([string]::IsNullOrWhiteSpace($oidValue)) { $oidValue = 'dbtest-oid' }
+if ($oidValue.Length -gt 50) { $oidValue = $oidValue.Substring(0,50) }
+
+# Escape single quotes for SQL literals
+$notes1Sql = $notes1 -replace '''',''''''
+$notes2Sql = $notes2 -replace '''',''''''
+$oidSql    = $oidValue -replace '''',''''''
+
+$insertAndReturnId = @"
+DECLARE @id INT;
+INSERT INTO $tableName (name, recommendations_json, notes, priority, completed, due_date, oid)
+VALUES (N'__mi_probe__', N'$json1', N'$notes1Sql', 1, 0, N'$due1', N'$oidSql');
+SET @id = SCOPE_IDENTITY();
+SELECT @id;
+"@
+
+$probeId = Invoke-SqlScalar -Sql $insertAndReturnId
 Write-Host "[dbtest] Probe row id: $probeId" -ForegroundColor DarkCyan
 
-# Update probe
+# Update probe (all mutable fields)
 Write-Host "[dbtest] Updating probe row" -ForegroundColor Cyan
-Invoke-SqlNonQuery -Sql "UPDATE $tableName SET notes='updated from test container', completed=1 WHERE id=$probeId;"
-$row = Invoke-SqlTable -Sql "SELECT id,name,notes,priority,completed FROM $tableName WHERE id=$probeId;"
+Invoke-SqlNonQuery -Sql "UPDATE $tableName SET recommendations_json=N'$json2', notes=N'$notes2Sql', priority=2, completed=1, due_date=N'$due2' WHERE id=$probeId;"
+$row = Invoke-SqlTable -Sql "SELECT id,name,recommendations_json,notes,priority,completed,due_date,oid FROM $tableName WHERE id=$probeId;"
 $row | Format-Table -AutoSize | Out-String | ForEach-Object { Write-Host "[row] $_" }
 
 # DDL attempt (index) to validate db_ddladmin

@@ -209,6 +209,21 @@ resource frontEnd 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.5')
             memory: '1Gi'
           }
+          probes: [
+            {
+              type: 'Startup'
+              httpGet: {
+                path: '/startupz'
+                port: 80
+              }
+              // Startup probe tuned for slow MI availability
+              initialDelaySeconds: 0
+              periodSeconds: 2
+              timeoutSeconds: 1
+              successThreshold: 1
+              failureThreshold: 60
+            }
+          ]
           env: [
             {
               name: 'KEY_VAULT_NAME'
@@ -308,6 +323,10 @@ resource middleTier 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'APPLICATIONINSIGHTS_CONNECTION_STRING'
               value: appInsights.properties.ConnectionString
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: azidentity.properties.clientId
             }
           ]
         }

@@ -72,6 +72,20 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('.25')
             memory: '.5Gi'
           }
+          probes: [
+            {
+              type: 'Startup'
+              httpGet: {
+                path: '/startupz'
+                port: 80
+              }
+              initialDelaySeconds: 0
+              periodSeconds: 2
+              timeoutSeconds: 1
+              successThreshold: 1
+              failureThreshold: 60
+            }
+          ]
           env: [
             {
               name: 'KEY_VAULT_NAME'

@@ -73,6 +73,21 @@ configure_azure_monitor(logger_name="my_todoapp_logger",connection_string=app_in
 logger = getLogger("my_todoapp_logger")
 logger.setLevel(INFO)
 
+# Lightweight startup probe endpoint: returns 200 only when a Managed Identity token can be acquired
+@app.route("/startupz", methods=["GET"]) 
+def startup_probe():
+    try:
+        # Use the already-configured credential. For SQL, request the default scope.
+        # Any 2xx response signals success to the Container Apps startup probe.
+        scope = "https://database.windows.net/.default"
+        token = credential.get_token(scope)
+        if token and token.token:
+            return "ok", 200
+        return "token not available", 503
+    except Exception as ex:
+        # During cold start, MI can take a few seconds to be available.
+        return f"waiting for managed identity: {type(ex).__name__}", 503
+
 # Configure Session Storage
 if REDIS_CONNECTION_STRING:
     print('Using Redis Cache to Store Session Data')

@@ -30,3 +30,17 @@ RUN dotnet tool run dab add-telemetry --app-insights-enabled true --app-insights
 FROM mcr.microsoft.com/azure-databases/data-api-builder
 
 COPY --from=build /config /App
+
+# Add startup wrapper that waits for Managed Identity token availability
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# Optional tuning via env vars
+# MI_RESOURCE: resource URL for token acquisition (default: https://database.windows.net)
+# MI_INITIAL_DELAY_SECONDS, MI_PERIOD_SECONDS, MI_FAILURE_THRESHOLD to control wait behavior
+ENV MI_RESOURCE="https://database.windows.net" \
+	MI_INITIAL_DELAY_SECONDS="0" \
+	MI_PERIOD_SECONDS="1" \
+	MI_FAILURE_THRESHOLD="60"
+
+ENTRYPOINT ["/entrypoint.sh"]
