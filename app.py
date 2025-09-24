@@ -35,6 +35,7 @@ from azure.keyvault.secrets import SecretClient
 from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry import trace
 from logging import INFO, getLogger
+import logging
 from typing import Any, Dict, cast
 from datetime import datetime
 from flask import send_from_directory
@@ -66,8 +67,31 @@ else:
 
 configure_azure_monitor(logger_name="my_todoapp_logger",connection_string=app_insights_connection_string,credential=managed_identity_credential)
 tracer = trace.get_tracer(__name__)
-logger = getLogger("todoapp")
-logger.setLevel(INFO)
+
+class SpanLogger:
+    """Logger facade so messages are visible locally.
+    Each call opens a short span (name derived from level) and prints the formatted message.
+    """
+    def _log(self, level: str, msg: str, *args):
+        span_name = f"log.{level.lower()}"
+        with tracer.start_as_current_span(span_name):
+            if args:
+                try:
+                    print(msg % args)
+                except Exception:
+                    print(msg, *args)
+            else:
+                print(msg)
+    def info(self, msg, *args):
+        self._log("INFO", msg, *args)
+    def debug(self, msg, *args):
+        self._log("DEBUG", msg, *args)
+    def warning(self, msg, *args):
+        self._log("WARNING", msg, *args)
+    def error(self, msg, *args):
+        self._log("ERROR", msg, *args)
+
+logger = SpanLogger()
 logger.info("App starting; IS_LOCALHOST=%s KEY_VAULT_NAME=%s API_URL set=%s", IS_LOCALHOST, key_vault_name, bool(os.environ.get("API_URL")))
 
 # Build args for redis-entraid managed identity provider
@@ -500,11 +524,22 @@ def load_data_to_session():
     logger.debug("[load_data] GraphQL todos response status=%s", response.status_code)
 
     if response.status_code == 200:
-        todos = response.json().get("data").get("todos").get("items")
-        session["todos"] = todos
+        try:
+            resp_json = response.json()
+        except ValueError:
+            logger.warning("[load_data] Todos response not JSON decodable; treating as empty list. Raw: %.500s", response.text)
+            session["todos"] = []
+        else:
+            data = resp_json.get("data") or {}
+            todos_root = data.get("todos") or {}
+            items = todos_root.get("items")
+            if items is None:
+                logger.debug("[load_data] 'items' missing in todos response structure; defaulting to empty list")
+                items = []
+            session["todos"] = items
     else:
-        logger.warning("Failed to load data from API - %s", response.text)
-        session["todos"] = None
+        logger.warning("[load_data] Failed to load data from API (status=%s). Body: %.500s", response.status_code, response.text)
+        session["todos"] = []
 
     session["todo"] =None
     session["TabEnum"] = Tab
@@ -518,7 +553,7 @@ def index():
     if not user:
         return redirect(url_for("login"))
     else:
-        load_data_to_session()
+    # load_data_to_session already executed via before_request; avoid duplicate call
         session["name"] = user.get("name") if isinstance(user, dict) else None
         session["token"] = auth.get_token_for_user(scope)['access_token']
         session["TabEnum"] = Tab
