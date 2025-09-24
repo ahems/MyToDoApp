@@ -143,11 +143,11 @@ resource frontEnd 'Microsoft.App/containerApps@2024-03-01' = {
                 port: 80
               }
               // Startup probe tuned for slow MI availability
-              initialDelaySeconds: 0
-              periodSeconds: 2
-              timeoutSeconds: 1
+              initialDelaySeconds: 15
+              periodSeconds: 5
+              timeoutSeconds: 30
               successThreshold: 1
-              failureThreshold: 60
+              failureThreshold: 3
             }
           ]
           env: [
