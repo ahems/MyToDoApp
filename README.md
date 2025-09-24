@@ -144,3 +144,47 @@ Use Azure Cloud Shell and Bash (not PowerShell) to run all the commands below in
 * Enable GitHub Actions for your repository by clicking on the "Actions" tab, and clicking on the `I understand my workflows, go ahead and enable them` button. You might need to Refresh to see them.
 * Click on the `Deploy Azure Container App Revision` Workflow on the left of the screen (you may need to refresh your Actions in order to see it).
 * Click on the `Run workflow` button, accept the default options (leave the checkbox unchecked)
+
+## Custom Redis Session Backend (Entra ID Rationale)
+
+This application uses Azure Cache for Redis with Entra ID (AAD) authentication only (access keys disabled). During development we observed that the default Flask-Session (Redis) backend occasionally failed to persist session data when using AAD token-based auth via the `redis_entraid` credential provider. The symptom was an MSAL login loop ("no prior log_in() info") because the state stored in the server-side session never appeared in Redis — no errors were raised, the key simply never materialized.
+
+### Why a custom backend?
+The stock Flask-Session save path relies on its own Redis client operations which, under AAD token auth, silently produced no stored key in this environment. A minimal custom `SessionInterface` was implemented that:
+* Generates a session id (SID) and stores the session dict using a single `SETEX` with a TTL.
+* Uses binary (pickle) serialization exactly once per request save.
+* Avoids wrappers / pipelines that previously obscured failures.
+* Always activates when `REDIS_CONNECTION_STRING` is defined (no extra env toggle required).
+
+### Security & Hardening
+* No debug or probe endpoints (e.g. `_session_dump`, `_redis_write_probe`) are present in production; they were removed after diagnosing the issue.
+* Redis is accessed exclusively over TLS (`rediss://`) with Managed Identity (or a local dev principal) obtaining AAD tokens; no static keys are stored in config.
+* `decode_responses` is not enabled to prevent accidental string decoding of pickled binary session blobs.
+* Session cookie settings: `HttpOnly`, `Secure` (in non-local environments), `SameSite=Lax` to support normal AAD redirect flows.
+
+### Local Development Support
+For local runs (when `IS_LOCALHOST=true`):
+* A fallback lightweight AAD credential provider can be enabled by setting `REDIS_LOCAL_PRINCIPAL_ID` along with `REDIS_CONNECTION_STRING`. It acquires tokens via `DefaultAzureCredential` (excluding Managed Identity) and presents them to Redis so you can test against the same Entra-only cache.
+
+### Relevant Environment Variables
+| Variable | Purpose |
+|----------|---------|
+| `REDIS_CONNECTION_STRING` | `rediss://host:6380/0` style URL enabling Redis + custom session backend. |
+| `AZURE_CLIENT_ID` | If set, selects a User Assigned Managed Identity for Key Vault & Redis token acquisition. |
+| `IS_LOCALHOST` | Enables local dev behaviors (non-secure cookie, optional local principal auth). |
+| `REDIS_LOCAL_PRINCIPAL_ID` | (Local only) Principal/alias configured in Redis access policy for AAD token auth during development. |
+| `KEY_VAULT_NAME` | Name of Key Vault holding auth secrets (authority, client id, secret, redirect URI). |
+
+### Operational Notes
+* No application changes are required to benefit from the custom backend; it replaces Flask-Session automatically when Redis is configured.
+* If the Redis cache becomes temporarily unavailable, session retrieval will yield a new empty session instead of throwing, mirroring Flask's default resilience.
+* Future migration back to the upstream backend would require validating a fixed/flask-session version under AAD token auth and removing the custom interface block in `app.py`.
+
+### Troubleshooting
+| Symptom | Check |
+|---------|-------|
+| Users loop back to login | Confirm Redis key creation for a session id (use Azure Cache console metrics; no in-app dump route). |
+| Session disappears quickly | Verify TTL configuration (default 3600s) and ensure container clock skew is nominal. |
+| Redis auth errors | Ensure Managed Identity (or local principal) has a Redis data-plane access policy with appropriate permissions. |
+
+This section documents why the code diverges from a standard Flask-Session configuration and provides the context needed for future maintainers to reevaluate once upstream support for Entra ID token scenarios improves.
