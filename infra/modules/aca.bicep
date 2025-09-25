@@ -306,3 +306,7 @@ resource apiurl 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
 }
 
 output APP_REDIRECT_URI string = 'https://${frontEnd.properties.configuration.ingress.fqdn}'
+// Surface API (GraphQL) endpoint URL for upstream consumption
+output API_URL string = 'https://${middleTier.properties.configuration.ingress.fqdn}/graphql/'
+// Surface Application Insights connection string already injected into environment
+output APPLICATIONINSIGHTS_CONNECTION_STRING string = appInsights.properties.ConnectionString

@@ -12,18 +12,9 @@ param diagnosticsName string = 'acr-diagnostics-${toLower(resourceToken)}'
 param cognitiveservicesLocation string = resourceGroup().location
 param redisCacheName string = 'todoapp-redis-${resourceToken}'
 param location string = resourceGroup().location
-param repositoryUrl string = 'https://github.com/ahems/MyToDoApp.git#main'
-param apiAppName string = 'todoapp-webapp-api-${resourceToken}'
-param webAppName string = 'todoapp-webapp-web-${resourceToken}'
-param apiImageNameAndVersion string = 'todoapi:latest'
-param appImageNameAndVersion string = 'todoapp:latest'
-param appServicePlanSku string = 'B1'
-param appServicePlanName string = 'todoapp-asp-${resourceToken}'
 param adminUserEnabled bool = true
 param aadAdminLogin string
 param aadAdminObjectId string
-@description('Wether to use authorization on the API or not. If set to true, the API will be secured with Entra AD.')
-param useAuthorizationOnAPI bool = false
 @description('Wether to restore the OpenAI service or not. If set to true, the OpenAI service will be restored from a soft-deleted backup. Use this only if you have previously deleted the OpenAI service created with this script, as you will need to restore it.')
 param restoreOpenAi bool
 param tenantId string = subscription().tenantId
@@ -42,13 +33,48 @@ param embeddingDeploymentName string = 'embedding'
 param embeddingDeploymentVersion string
 param embeddingSkuName string
 param availableEmbeddingDeploymentCapacity int
-param deployToWebAppInsteadOfContainerApp bool = false 
 // Generate a short, unique revision suffix per deployment to avoid conflicts
 param revisionSuffix string = toLower(substring(replace(newGuid(),'-',''), 0, 8))
+param AIServicesKind string = 'AIServices'
+param publicNetworkAccess string = 'Enabled'
 
-var apiAppURL = 'https://${apiAppName}.azurewebsites.net/graphql/'
 var chatGptDeploymentCapacity = availableChatGptDeploymentCapacity / 10
 var embeddingDeploymentCapacity = availableEmbeddingDeploymentCapacity / 10
+
+module identity 'modules/identity.bicep' = {
+  name: 'Deploy-User-Managed-Identity'
+  params: {
+    identityName: identityName
+    location: location
+  }
+}
+
+module redis 'modules/redis.bicep' = {
+  name: 'Deploy-Redis'
+  params: {
+    redisCacheName: redisCacheName
+    location: location
+    identityName: identityName
+    aadAdminObjectId: aadAdminObjectId
+    aadAdminLogin: aadAdminLogin
+  }
+  dependsOn: [
+    identity
+  ]
+}
+
+module keyvault 'modules/keyvault.bicep' = {
+  name: 'Deploy-KeyVault'
+  params: {
+    keyVaultName: keyVaultName
+    location: location
+    identityName: identityName
+    aadAdminObjectId: aadAdminObjectId
+  }
+  dependsOn: [
+    identity
+  ]
+}
 
 module authentication 'modules/authentication.bicep' = {
   name: 'Deploy-Authentication'
@@ -63,20 +89,8 @@ module authentication 'modules/authentication.bicep' = {
   ]
 }
 
-module redis 'modules/redis.bicep' = {
-  name: 'Deploy-Redis'
-  params: {
-    redisCacheName: redisCacheName
-    location: location
-    identityName: identityName
-  }
-  dependsOn: [
-    identity
-  ]
-}
-
-module cognitiveservices 'modules/openai.bicep' = {
-  name: 'Deploy-Open-AI-Service'
+module cognitiveservices 'modules/aiservices.bicep' = {
+  name: 'Deploy-AI-Foundry'
   params: {
     name: cognitiveservicesname
     location: cognitiveservicesLocation
@@ -95,21 +109,11 @@ module cognitiveservices 'modules/openai.bicep' = {
     embeddingDeploymentCapacity: embeddingDeploymentCapacity
     embeddingSkuName: embeddingSkuName
     openAiDeploymentName: openAiDeploymentName
+    kind: AIServicesKind
+    publicNetworkAccess: publicNetworkAccess
   }
   dependsOn: [
     keyvault
-  ]
-}
-
-module keyvault 'modules/keyvault.bicep' = {
-  name: 'Deploy-KeyVault'
-  params: {
-    keyVaultName: keyVaultName
-    location: location
-    identityName: identityName
-  }
-  dependsOn: [
-    identity
   ]
 }
 
@@ -147,14 +151,6 @@ module acr 'modules/acr.bicep' = {
 // Surface ACR endpoint for azd environment injection
 output AZURE_CONTAINER_REGISTRY_ENDPOINT string = acr.outputs.loginServer
 
-module identity 'modules/identity.bicep' = {
-  name: 'Deploy-User-Managed-Identity'
-  params: {
-    identityName: identityName
-    location: location
-  }
-}
-
 module appinsights 'modules/applicationinsights.bicep' = {
   name: 'Deploy-Application-Insights'
   params: {
@@ -162,13 +158,14 @@ module appinsights 'modules/applicationinsights.bicep' = {
     workspaceName: workspaceName
     identityName: identityName
     location: location
+    aadAdminObjectId: aadAdminObjectId
   }
   dependsOn: [
     identity
   ]
 }
 
-module containerApp 'modules/aca.bicep' = if (!deployToWebAppInsteadOfContainerApp) {
+module containerApp 'modules/aca.bicep' = {
   name: 'Deploy-Container-App'
   params: {
     keyVaultName:keyVaultName
@@ -197,124 +194,26 @@ module containerApp 'modules/aca.bicep' = if (!deployToWebAppInsteadOfContainerA
   ]
 }
 
-output APP_REDIRECT_URI string = deployToWebAppInsteadOfContainerApp ? 'https://${webAppName}.azurewebsites.net/getAToken' : containerApp!.outputs.APP_REDIRECT_URI
+output APP_REDIRECT_URI string = containerApp!.outputs.APP_REDIRECT_URI
 
-module buildTaskForWeb 'modules/task.bicep' = if (deployToWebAppInsteadOfContainerApp) {
-  name: 'Deploy-Build-Task-For-Web-To-ACR'
-  params: {
-    acrName: acrName
-    location: location
-    acrTaskName: 'buildWebApp'
-    contextPath: repositoryUrl
-    repoName: 'todoapp'
-    taskBuildVersionTag: 'latest'
-    useAuthorization: false
-    identityName: identityName
-  }
-  dependsOn: [
-    continuousDeploymentForWebApp
-  ]
-}
+// Expose values needed for local debugging / .env population
+// Key Vault name (already determined as a param -> output for azd env injection)
+output KEY_VAULT_NAME string = keyVaultName
 
-module buildTaskForAPI 'modules/task.bicep' = if (deployToWebAppInsteadOfContainerApp) {
-  name: 'Deploy-Build-Task-For-API-To-ACR'
-  params: {
-    acrName: acrName
-    location: location
-    acrTaskName: 'buildAPIApp'
-    contextPath: '${repositoryUrl}:api'
-    repoName: 'todoapi'
-    taskBuildVersionTag: 'latest'
-    useAuthorization: useAuthorizationOnAPI
-    identityName: identityName
-  }
-  dependsOn: [
-    continuousDeploymentForApiApp
-  ]
-}
+// Redis Entra-based connection string (surfaced from redis module output)
+output REDIS_CONNECTION_STRING string = redis.outputs.entraConnectionString
 
-module appServicePlan  'modules/appserviceplan.bicep' = if (deployToWebAppInsteadOfContainerApp) {
-  name: 'Deploy-App-Service-Plan'
-  params: {
-    appServicePlanName:appServicePlanName
-    location: location
-    appServicePlanSku: appServicePlanSku
-  }
-}
+// Application Insights connection string (need to reference component resource id after module deployment)
+// The module doesn't output it directly, so recreate the name and reference the implicit resource symbol in the module via existing name
+// appinsights module uses name appInsightsName; we can read its properties via symbolic name 'appinsights'.
+output APPLICATIONINSIGHTS_CONNECTION_STRING string = containerApp.outputs.APPLICATIONINSIGHTS_CONNECTION_STRING
 
-module webapp  'modules/webapp.bicep' = if (deployToWebAppInsteadOfContainerApp) {
-  name: 'Deploy-Web-App'
-  params: {
-    keyVaultName:keyVaultName
-    location: location
-    appInsightsName:appInsightsName
-    webAppName:webAppName
-    containerRegistryName:acrName
-    identityName:identityName
-    appImageNameAndVersion:appImageNameAndVersion
-    appServicePlanName:appServicePlanName
-    apiAppURL:apiAppURL
-  }
-  dependsOn: [
-    appServicePlan
-    keyvault
-    appinsights
-    identity
-  ]
-}
+// API URL (GraphQL endpoint) - constructed similarly to what aca module sets inside env values
+// The middle tier container app FQDN is not surfaced directly; derive using known naming convention from aca module parameters
+// We add an output in aca module instead would be cleaner, but for now replicate pattern: apiName = 'todoapp-api-${resourceToken}'
+// Since containerApp module internal resource name uses apiName param, we cannot access its properties here without an output. TODO: add output in aca module.
+// Placeholder output (empty) until module is updated; avoids breaking template. Next change will add actual output from aca module.
+output API_URL string = containerApp.outputs.API_URL
 
-module continuousDeploymentForWebApp 'modules/continuous-deployment.bicep' = if (deployToWebAppInsteadOfContainerApp) {
-  name: 'Configure-CD-For-${webAppName}'
-  params: {
-    webAppName: webAppName
-    containerRegistryName: acrName
-    identityName: identityName
-    imageNameAndVersion: appImageNameAndVersion
-    acrWebhookName: 'todoappwebhook'
-  }
-  dependsOn: [
-    apiapp
-    acr
-    identity
-  ]
-}
-
-module apiapp 'modules/apiapp.bicep' = if (deployToWebAppInsteadOfContainerApp) {
-  name: 'Deploy-API-App'
-  params: {
-    location: location
-    sqlServerName:sqlServerName
-    appInsightsName:appInsightsName
-    apiAppName:apiAppName
-    containerRegistryName:acrName
-    identityName:identityName
-    apiImageNameAndVersion:apiImageNameAndVersion
-    appServicePlanName:appServicePlanName
-    authEnabled: useAuthorizationOnAPI
-  allowedIpAddresses: webapp!.outputs.outgoingIpAddresses
-    keyVaultName:keyVaultName
-  }
-  dependsOn: [
-    database
-    appServicePlan
-    keyvault
-    appinsights
-    identity
-  ]
-}
-
-module continuousDeploymentForApiApp 'modules/continuous-deployment.bicep' = if (deployToWebAppInsteadOfContainerApp) {
-  name: 'Configure-CD-For-${apiAppName}'
-  params: {
-    webAppName: apiAppName
-    containerRegistryName: acrName
-    identityName: identityName
-    imageNameAndVersion: apiImageNameAndVersion
-    acrWebhookName: 'todoapiwebhook'
-  }
-  dependsOn: [
-    apiapp
-    acr
-    identity
-  ]
-}
+// Azure Client Id of the user-assigned managed identity
+output AZURE_CLIENT_ID string = identity.outputs.clientId

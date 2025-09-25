@@ -8,8 +8,10 @@ FROM python:${PYTHON_VERSION}-${BASE_VARIANT}
 WORKDIR /app
 
 # Prevent Python from writing .pyc files and ensure stdout/stderr are unbuffered
+# Suppress pip's root user warning intentionally (container build context)
 ENV PYTHONDONTWRITEBYTECODE=1 \
-	PYTHONUNBUFFERED=1
+	PYTHONUNBUFFERED=1 \
+	PIP_ROOT_USER_ACTION=ignore
 
 # Copy only requirements first to maximize layer caching
 COPY requirements.txt /app/

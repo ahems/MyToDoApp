@@ -1,6 +1,8 @@
 param redisCacheName string = 'todoapp-redis-${uniqueString(resourceGroup().id)}'
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param location string = resourceGroup().location
+param aadAdminObjectId string
+param aadAdminLogin string
 
 @description('Redis pricing tier: Basic, Standard, or Premium')
 @allowed([ 'Basic', 'Standard', 'Premium' ])
@@ -16,7 +18,6 @@ param redisSkuCapacity int = 0
 resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: identityName
 }
-
 
 resource redisCache 'Microsoft.Cache/redis@2024-11-01' = {
   name: redisCacheName
@@ -45,8 +46,8 @@ resource redisCache 'Microsoft.Cache/redis@2024-11-01' = {
 }
 
 // Grant data-plane access to the passed-in user-assigned managed identity using Redis Data Owner policy
-resource redisDataOwnerAssignment 'Microsoft.Cache/redis/accessPolicyAssignments@2024-11-01' = {
-  name: 'todoapp-DataOwner'
+resource redisUserAssignedMIDataOwnerAssignment 'Microsoft.Cache/redis/accessPolicyAssignments@2024-11-01' = {
+  name: 'todoapp-MI-DataOwner'
   parent: redisCache
   properties: {
     // Object ID (principalId) of the user-assigned managed identity
@@ -56,6 +57,23 @@ resource redisDataOwnerAssignment 'Microsoft.Cache/redis/accessPolicyAssignments
     // Built-in data access policy name: Data Owner | Data Contributor | Data Reader
     accessPolicyName: 'Data Owner'
   }
+}
+
+// Grant data-plane access to the passed-in user identity so that debugging locally will work
+resource redisUserDataOwnerAssignment 'Microsoft.Cache/redis/accessPolicyAssignments@2024-11-01' = {
+  name: 'todoapp-User-DataOwner'
+  parent: redisCache
+  properties: {
+    // Object ID (principalId) of the user-assigned managed identity
+    objectId: aadAdminObjectId
+    // Friendly alias for objectId; also used as the Redis username for token-based auth
+    objectIdAlias: aadAdminLogin
+    // Built-in data access policy name: Data Owner | Data Contributor | Data Reader
+    accessPolicyName: 'Data Owner'
+  } 
+  dependsOn: [
+    redisUserAssignedMIDataOwnerAssignment
+  ]
 }
 
 // Useful outputs for clients using Entra-based authentication

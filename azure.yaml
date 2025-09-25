@@ -6,6 +6,10 @@ hooks:
     shell: pwsh
     run: ./scripts/preup.ps1
     interactive: true
+  postup:
+    shell: pwsh
+    run: ./scripts/postup.ps1
+    interactive: true
   postprovision:
     shell: pwsh
     run: ./scripts/configure-database.ps1

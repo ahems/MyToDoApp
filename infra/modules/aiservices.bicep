@@ -4,7 +4,7 @@ param location string = 'canadaeast'
 param tags object = {}
 @description('The custom subdomain name used to access the API. Defaults to the value of the name parameter.')
 param customSubDomainName string = name
-param kind string = 'OpenAI'
+param kind string = 'AIServices'
 param openAiDeploymentName string = 'chat'
 param restoreOpenAi bool = false
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'

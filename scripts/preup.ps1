@@ -32,10 +32,31 @@ function Ensure-Module {
 }
 
 function Get-AzdValue {
-	param([Parameter(Mandatory)][string]$Name,[string]$Default='')
-	$val = azd env get-value $Name 2>$null
-	if (-not $val -or $val -match '^ERROR:') { return $Default }
-	return $val.Trim()
+	param(
+		[Parameter(Mandatory)][string]$Name,
+		[string]$Default=''
+	)
+	# Capture both stdout & stderr so we can inspect the textual output even if azd returns a non-zero exit code.
+	$raw = & azd env get-value $Name 2>&1
+	$exit = $LASTEXITCODE
+	if (-not $raw) { return $Default }
+	# Normalize to single trimmed string (azd may emit trailing newlines)
+	$val = ($raw | Out-String).Trim()
+
+	# Detect common azd error patterns. Sometimes ANSI color codes or whitespace precede the word ERROR/error.
+	#   - Possible formats observed: "ERROR: key 'XYZ' not found..." or "error: ..."
+	#   - With color codes: "\x1b[31mERROR: key 'XYZ' not found ...\x1b[0m"
+	#   - Non-zero exit code is also a strong signal the retrieval failed.
+	$ansiPattern = '^(?:\x1B\[[0-9;]*m)*'  # optional leading ANSI sequences
+	if ($exit -ne 0 -or
+		$val -match ("${ansiPattern}\s*(?i:error:)" ) -or
+		$val -match ("${ansiPattern}\s*(?i)key '?$Name'?'? not found") -or
+		$val -match ("${ansiPattern}\s*(?i)no value found") ) {
+		Write-Verbose "azd env key '$Name' not found or retrieval error (exit=$exit); returning default." -Verbose:$false
+		return $Default
+	}
+
+	return $val
 }
 
 function Set-AzdValue {
@@ -119,7 +140,7 @@ function Ensure-OpenAIAccount {
 	$existingAcct = Get-AzCognitiveServicesAccount -Name $Acct -ResourceGroupName $Rg -ErrorAction SilentlyContinue
 	if (-not $existingAcct) {
 		Write-Host "Creating Azure OpenAI account '$Acct' in $Loc..." -ForegroundColor Green
-		New-AzCognitiveServicesAccount -ResourceGroupName $Rg -Name $Acct -Type 'OpenAI' -SkuName 'S0' -Location $Loc -CustomSubDomainName $Acct -Force | Out-Null
+		New-AzCognitiveServicesAccount -ResourceGroupName $Rg -Name $Acct -Type 'AIServices' -SkuName 'S0' -Location $Loc -CustomSubDomainName $Acct -Force | Out-Null
 	} elseif ($existingAcct.Location -ne $Loc) {
 		Write-Warning "Existing account region '$($existingAcct.Location)' differs from requested '$Loc'; proceeding with existing region."
 	}
