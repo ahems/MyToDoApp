@@ -130,15 +130,52 @@ function Get-AccountModelsMultiVersion {
 	$apiVersion = '2025-07-01-preview'
 	$url = "/subscriptions/$SubId/resourceGroups/$Rg/providers/Microsoft.CognitiveServices/accounts/$Acct/models?api-version=$apiVersion"
 	try { $resp = Invoke-AzRestMethod -Path $url -Method GET -ErrorAction Stop } catch { Write-Error "Failed to call models endpoint: $($_.Exception.Message)"; return @() }
-	$json = $resp.Content | ConvertFrom-Json
+
 	$models = @()
-	if ($json -and $json.value) {
-		$excludePattern = '(?i)(realtime|transcribe|image|audio)'
-		foreach ($m in $json.value) {
-			if ($m.name -match $excludePattern) { continue }
-			$model = [Model]::new(); $model.format = $m.format; $model.name = $m.name; $model.version = $m.version; $models += $model
+	if (-not $resp -or -not $resp.Content) {
+		Write-Warning "Empty response when enumerating models."
+		return $models
+	}
+
+	# Try to parse JSON, but be defensive: structure may change or contain an error payload.
+	try {
+		$json = $resp.Content | ConvertFrom-Json -ErrorAction Stop
+	} catch {
+		Write-Warning ("Unable to parse models JSON: {0}. Raw (truncated): {1}" -f $_.Exception.Message, ($resp.Content.Substring(0, [Math]::Min(500, $resp.Content.Length))))
+		return $models
+	}
+
+	# Determine the collection of model items. Some API shapes return { value = [...] }, others may return an array directly.
+	$modelItems = @()
+	if ($null -ne $json) {
+		$hasValueProp = $false
+		if ($json -is [System.Management.Automation.PSObject]) {
+			$hasValueProp = $json.PSObject.Properties.Name -contains 'value'
 		}
-	} else { Write-Warning "No model data returned. Raw: $($resp.Content)" }
+		if ($hasValueProp -and $json.value) {
+			$modelItems = $json.value
+		} elseif ($json -is [System.Collections.IEnumerable] -and -not ($json -is [string])) {
+			# Treat top-level array as models list
+			$modelItems = $json
+		}
+	}
+
+	if (-not $modelItems -or ($modelItems | Measure-Object).Count -eq 0) {
+		Write-Warning ("No model entries discovered. Raw (truncated): {0}" -f ($resp.Content.Substring(0, [Math]::Min(500, $resp.Content.Length))))
+		return $models
+	}
+
+	$excludePattern = '(?i)(realtime|transcribe|image|audio)'
+	foreach ($m in $modelItems) {
+		# Be tolerant if expected properties are missing
+		if (-not ($m | Get-Member -Name name -ErrorAction SilentlyContinue)) { continue }
+		if ($m.name -match $excludePattern) { continue }
+		$model = [Model]::new();
+		$model.name = $m.name
+		if ($m | Get-Member -Name format -ErrorAction SilentlyContinue) { $model.format = $m.format }
+		if ($m | Get-Member -Name version -ErrorAction SilentlyContinue) { $model.version = $m.version }
+		$models += $model
+	}
 	return $models
 }
 
@@ -171,6 +208,50 @@ Ensure-Module -Name Az.CognitiveServices
 $tenantId       = Get-AzdValue -Name 'TENANT_ID'
 $subscriptionId = Get-AzdValue -Name 'AZURE_SUBSCRIPTION_ID'
 Ensure-AzLogin -TenantId $tenantId -SubscriptionId $subscriptionId
+
+# If subscription id is missing but resource group is already known, attempt to discover the subscription
+if (-not $subscriptionId) {
+	$rgForLookup = Get-AzdValue -Name 'AZURE_RESOURCE_GROUP'
+	if ($rgForLookup) {
+		Write-Host "Attempting to resolve subscription id for resource group '$rgForLookup'..." -ForegroundColor DarkCyan
+		$resolvedSubId = $null
+
+		# First try current context (fast path)
+		$ctx = Get-AzContext -ErrorAction SilentlyContinue
+		if ($ctx) {
+			try {
+				if (Get-AzResourceGroup -Name $rgForLookup -ErrorAction SilentlyContinue) {
+					$resolvedSubId = $ctx.Subscription.Id
+				}
+			} catch { }
+		}
+
+		# Enumerate subscriptions if still not resolved
+		if (-not $resolvedSubId) {
+			try {
+				$subs = Get-AzSubscription -ErrorAction Stop
+				foreach ($sub in $subs) {
+					try {
+						Set-AzContext -Subscription $sub.Id -ErrorAction Stop | Out-Null
+						if (Get-AzResourceGroup -Name $rgForLookup -ErrorAction SilentlyContinue) { $resolvedSubId = $sub.Id; break }
+					} catch { }
+				}
+			} catch {
+				Write-Warning "Failed enumerating subscriptions while resolving subscription id: $($_.Exception.Message)"
+			}
+		}
+
+		if ($resolvedSubId) {
+			Write-Host "Resolved subscription id '$resolvedSubId' for resource group '$rgForLookup'." -ForegroundColor Green
+			Set-AzdValue -Name 'AZURE_SUBSCRIPTION_ID' -Value $resolvedSubId
+			$subscriptionId = $resolvedSubId
+			# Ensure context is set to resolved subscription
+			if ((Get-AzContext).Subscription.Id -ne $subscriptionId) { Set-AzContext -Subscription $subscriptionId | Out-Null }
+		} else {
+			Write-Warning "Unable to resolve subscription id using resource group '$rgForLookup'. Proceeding without setting AZURE_SUBSCRIPTION_ID."
+		}
+	}
+}
 
 # Ensure NAME & OBJECT_ID env vars (user context)
 $nameVal = Get-AzdValue -Name 'NAME'

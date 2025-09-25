@@ -1,20 +1,25 @@
-# Use an official Python runtime as a parent image - Debian 11
-FROM python:3.12.3-bullseye
-
-# Install v18 ODBC Driver for SQL Server for Debian 11
-RUN curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - && \
-    curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list && \
-    apt-get update && \
-    ACCEPT_EULA=Y apt-get install msodbcsql18 -y
+# Use a parameterized Python base so you can easily target the latest stable
+# Override at build time with --build-arg PYTHON_VERSION=3.13 --build-arg BASE_VARIANT=slim-bookworm
+ARG PYTHON_VERSION=3.13
+ARG BASE_VARIANT=slim-bookworm
+FROM python:${PYTHON_VERSION}-${BASE_VARIANT}
 
 # Set the working directory in the container to /app
 WORKDIR /app
 
-# Add current directory contents into the container at /app
-ADD . /app
+# Prevent Python from writing .pyc files and ensure stdout/stderr are unbuffered
+ENV PYTHONDONTWRITEBYTECODE=1 \
+	PYTHONUNBUFFERED=1
+
+# Copy only requirements first to maximize layer caching
+COPY requirements.txt /app/
 
 # Install any needed packages specified in requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+	&& pip install --no-cache-dir -r requirements.txt
+
+# Now copy the rest of the app
+COPY . /app
 
 # Make port 80 available to the world outside this container
 EXPOSE 80

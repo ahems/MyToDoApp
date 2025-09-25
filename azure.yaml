@@ -10,6 +10,10 @@ hooks:
     shell: pwsh
     run: ./scripts/configure-database.ps1
     interactive: true
+  postdown:
+    shell: pwsh
+    run: ./scripts/postdown.ps1
+    interactive: true
 services:
     my-to-do-app:
         project: .
