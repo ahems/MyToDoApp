@@ -111,6 +111,7 @@ module cognitiveservices 'modules/aiservices.bicep' = {
     openAiDeploymentName: openAiDeploymentName
     kind: AIServicesKind
     publicNetworkAccess: publicNetworkAccess
+    aadAdminObjectId: aadAdminObjectId
   }
   dependsOn: [
     keyvault

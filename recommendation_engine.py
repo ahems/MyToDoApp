@@ -1,37 +1,123 @@
 import os
 import json
+import time
 import asyncio
 from services import Service
 from openai import AzureOpenAI
-from azure.identity import DefaultAzureCredential
+from azure.identity import DefaultAzureCredential, ManagedIdentityCredential
 from azure.keyvault.secrets import SecretClient
+from typing import Optional
 
 class RecommendationEngine:
+    """Recommendation engine that uses Entra ID (Azure AD) auth for Azure OpenAI.
+
+    Local debugging (IS_LOCALHOST=true):
+        - Uses DefaultAzureCredential excluding managed identity, obtaining a user token.
+    In Container App (managed identity present):
+        - Uses ManagedIdentityCredential (user-assigned when AZURE_CLIENT_ID set, else system-assigned).
+    """
+
+    _AOAI_SCOPE = "https://cognitiveservices.azure.com/.default"
+
     def __init__(self):
+        self._is_local = os.environ.get("IS_LOCALHOST", "false").lower() == "true"
+        self._key_vault_name = os.environ.get("KEY_VAULT_NAME")
+        self._user_mi_client_id = os.environ.get("AZURE_CLIENT_ID")  # user-assigned MI client id (in container)
 
-        key_vault_name = os.environ.get("KEY_VAULT_NAME")
-        AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
+        # Resolve deployment & endpoint (may come from Key Vault or environment)
+        self.deployment: str = ""
+        self._endpoint: str = ""
+        self._token_value: Optional[str] = None
+        self._token_expires: float = 0.0
 
-        if AZURE_CLIENT_ID:
-            print('Using Managed Identity to Get Open AI Credentials from Key Vault')
-            credential = DefaultAzureCredential()
-            key_vault_uri = f"https://{key_vault_name}.vault.azure.net"
-            client = SecretClient(vault_url=key_vault_uri, credential=credential)
-            self.deployment = client.get_secret("AZUREOPENAIDEPLOYMENTNAME").value;
-            api_key = client.get_secret("AZUREOPENAIAPIKEY").value;
-            endpoint = client.get_secret("AZUREOPENAIENDPOINT").value;
+        # Choose credential strategy
+        if self._is_local:
+            print("[RecommendationEngine] Local debug mode: using DefaultAzureCredential (exclude managed identity)")
+            self._credential = DefaultAzureCredential(exclude_managed_identity_credential=True)
         else:
-            print('Using Environment Variables for Open AI Credentials')
-            self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", '')
-            api_key = os.environ.get("AZURE_OPENAI_API_KEY", '')
-            endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", '')
+            if self._user_mi_client_id:
+                print("[RecommendationEngine] Container mode: using User Assigned Managed Identity")
+                self._credential = ManagedIdentityCredential(client_id=self._user_mi_client_id)
+            else:
+                print("[RecommendationEngine] Container mode: using System Assigned Managed Identity")
+                self._credential = ManagedIdentityCredential()
 
-        self.client = AzureOpenAI(azure_endpoint = endpoint, 
-                    api_key=api_key,  
-                    api_version="2024-02-15-preview"
+        # Attempt to pull secrets from Key Vault when managed identity (user-assigned or system) is available
+        # or when local user has access to the vault.
+        if self._key_vault_name:
+            try:
+                kv_uri = f"https://{self._key_vault_name}.vault.azure.net"
+                kv_client = SecretClient(vault_url=kv_uri, credential=self._credential)
+                # These secrets should exist if bootstrap script populated them.
+                if not self.deployment:
+                    try:
+                        self.deployment = kv_client.get_secret("AZUREOPENAIDEPLOYMENTNAME").value or ""
+                    except Exception:
+                        self.deployment = self.deployment or ""
+                if not self._endpoint:
+                    try:
+                        self._endpoint = kv_client.get_secret("AZUREOPENAIENDPOINT").value or ""
+                    except Exception:
+                        self._endpoint = self._endpoint or ""
+            except Exception as e:
+                print(f"[RecommendationEngine] Warning: Key Vault access failed ({type(e).__name__}: {e}); will rely on environment vars.")
+
+        # Environment fallback values
+        if not self.deployment:
+            self.deployment = os.environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", "") or ""
+        if not self._endpoint:
+            self._endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "") or ""
+
+        if not self.deployment or not self._endpoint:
+            raise ValueError("Azure OpenAI deployment name or endpoint is missing. Ensure environment variables are set.")
+
+        # Try to obtain Azure AD token
+        token_ok = self._refresh_token_if_needed(force=True)
+        if token_ok:
+            print("[RecommendationEngine] Using Entra ID token authentication for Azure OpenAI.")
+            self.client = AzureOpenAI(
+                azure_endpoint=self._endpoint,
+                api_version="2024-02-15-preview",
+                azure_ad_token=self._token_value,
+            )
+        else:
+            raise RuntimeError("Failed to obtain Azure AD token for OpenAI authentication.")
+
+
+    # ------------------ Internal helpers ------------------
+    def _refresh_token_if_needed(self, force: bool = False) -> bool:
+        """Acquire or refresh the Entra ID token if close to expiry.
+        Returns True if a valid token is present after call, else False.
+        """
+        if force or (not self._token_value) or (time.time() > self._token_expires - 120):
+            try:
+                token = self._credential.get_token(self._AOAI_SCOPE)
+                self._token_value = token.token
+                # expires_on exposed on azure.identity tokens
+                self._token_expires = float(getattr(token, "expires_on", (time.time() + 600)))
+                return True
+            except Exception as e:
+                print(f"[RecommendationEngine] Token acquisition failed: {type(e).__name__}: {e}")
+                self._token_value = None
+                return False
+        return True
+
+    def _ensure_token_client(self):
+        """If we are in token mode and token refreshed, update client (library lacks auto-refresh)."""
+        if self._token_value and hasattr(self.client, "azure_ad_token"):
+            # Recreate client if token nearing expiry to ensure new requests use fresh token.
+            if time.time() > self._token_expires - 120:
+                if self._refresh_token_if_needed(force=True):
+                    self.client = AzureOpenAI(
+                        azure_endpoint=self._endpoint,
+                        api_version="2024-02-15-preview",
+                        azure_ad_token=self._token_value,
                     )
 
     async def get_recommendations(self, keyword_phrase, previous_links_str=None):
+        # Refresh token if in token auth mode
+        if self._token_value:
+            self._ensure_token_client()
         prompt = f"""Please return 5 recommendations based on the input string: '{keyword_phrase}' using correct JSON syntax that contains a title and a hyperlink back to the supporting website. RETURN ONLY JSON AND NOTHING ELSE"""
         system_prompt = """You are an administrative assistant bot who is good at giving 
         recommendations for tasks that need to be done by referencing website links that can provide 
@@ -49,25 +135,26 @@ class RecommendationEngine:
         if previous_links_str is not None:
             prompt = prompt + f". EXCLUDE the following links from your recommendations: {previous_links_str}"  
 
-        message_text = [{"role":"system","content":system_prompt},
-                        {"role":"user","content":prompt},]
+        message_text = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ]
 
         response = self.client.chat.completions.create(
-                        model=self.deployment,
-                        messages = message_text,
-                        temperature=0.14,
-                        max_tokens=800,
-                        top_p=0.17,
-                        frequency_penalty=0,
-                        presence_penalty=0,
-                        stop=None
-                        )
-
-        result = response.choices[0].message.content
+            model=self.deployment,
+            messages=message_text,
+            temperature=0.14,
+            max_tokens=800,
+            top_p=0.17,
+            frequency_penalty=0,
+            presence_penalty=0,
+            stop=None,
+        )
+        result = response.choices[0].message.content if response.choices and response.choices[0].message else None
         print(result)
 
         try:
-            recommendation = json.loads(result)
+            recommendation = json.loads(result) if isinstance(result, str) else []
         except Exception as e:
             print(f"Error loading recommendations: {e}")
             recommendation = [{"title": "Sorry, unable to recommendation at this time", "link": ""}]

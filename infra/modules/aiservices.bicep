@@ -8,6 +8,7 @@ param kind string = 'AIServices'
 param openAiDeploymentName string = 'chat'
 param restoreOpenAi bool = false
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
+param aadAdminObjectId string
 
 @allowed([ 'Enabled', 'Disabled' ])
 param publicNetworkAccess string = 'Enabled'
@@ -94,12 +95,39 @@ resource account 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
     customSubDomainName: customSubDomainName
     publicNetworkAccess: publicNetworkAccess
     networkAcls: networkAcls
-    disableLocalAuth: false
+    disableLocalAuth: true
     dynamicThrottlingEnabled: false
     restrictOutboundNetworkAccess: false
     restore: restoreOpenAi
   }
   sku: sku
+}
+
+// Grant the managed identity data-plane permission to invoke Azure OpenAI deployments (chat/completions, embeddings, etc.)
+// Role: Cognitive Services OpenAI User (least-privilege for inference)
+// If you need to manage deployments, consider Cognitive Services OpenAI Contributor instead.
+// Role definition ID source: Built-in role GUID for 'Cognitive Services OpenAI User'. Adjust if tenant introduces custom role.
+resource openAiUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  // Use deterministic GUID from account id + identity name (both known at compile time)
+  name: guid(account.id, identityName, 'openai-user')
+  scope: account
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'bfa99463-55dc-4b5c-abc1-0456fb2698ac') // Cognitive Services OpenAI User
+    principalId: azidentity.properties.principalId
+    principalType: 'ServicePrincipal'
+  }
+}
+
+// Grant the same data-plane role to the specified AAD admin/user so local development (DefaultAzureCredential using user context) can call the Azure OpenAI deployments directly.
+// Uses deterministic GUID to stay idempotent across deployments.
+resource openAiUserLocalRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(account.id, aadAdminObjectId, 'openai-user')
+  scope: account
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'bfa99463-55dc-4b5c-abc1-0456fb2698ac') // Cognitive Services OpenAI User
+    principalId: aadAdminObjectId
+    principalType: 'User'
+  }
 }
 
 @batchSize(1)
@@ -125,14 +153,6 @@ resource OpenAiDeployment 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   }
 }
 
-resource OpenAiKey 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
-  parent: keyVault
-  name: 'AZUREOPENAIAPIKEY'
-  properties: {
-    value: account.listKeys().key1
-    contentType: 'text/plain'
-  }
-}
 resource Endpoint 'Microsoft.KeyVault/vaults/secrets@2023-07-01' = {
   parent: keyVault
   name: 'AZUREOPENAIENDPOINT'
