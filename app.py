@@ -25,7 +25,6 @@ from recommendation_engine import RecommendationEngine
 from tab import Tab
 from priority import Priority
 from context_processors import inject_current_date
-from dotenv import load_dotenv
 from azure.identity import DefaultAzureCredential
 from azure.identity import ManagedIdentityCredential
 from azure.core.credentials import TokenCredential
@@ -37,7 +36,14 @@ import logging
 from typing import Any, Dict, cast
 from datetime import datetime
 from flask import send_from_directory
-load_dotenv()
+
+if os.environ.get("IS_LOCALHOST", "false").lower() == "true":
+    try:  # optional dependency for local dev convenience
+        from dotenv import load_dotenv  # type: ignore
+        load_dotenv()
+        print("[dotenv] Local .env loaded")
+    except Exception as _e_dotenv:
+        print(f"[dotenv] Skipped loading .env ({_e_dotenv})")
 
 scope = ["User.Read"]
 
@@ -210,6 +216,47 @@ if not api_url:
     raise ValueError("API_URL environment variable is not set")
 else:
     logger.info("Using API URL: %s", api_url)
+
+# -------------------------------------------------
+# Managed Identity token helper for API access
+# -------------------------------------------------
+from threading import Lock as _Lock
+_mi_token_lock = _Lock()
+_mi_token: Dict[str, Any] = {"value": None, "exp": 0}
+
+def _get_managed_identity_api_token() -> str:
+    """Acquire (and cache) a Managed Identity access token for the Data API Builder backend.
+
+    Strategy:
+      1. Try audience style: api://CLIENTID/.default (custom app registration).
+      2. Fallback to CLIENTID/.default (some configurations accept this form).
+      3. Fallback to plain CLIENTID.
+      4. Final (should not normally be used) fallback to https://graph.microsoft.com/.default so we surface auth vs network errors.
+    """
+    import time
+    now = int(time.time())
+    with _mi_token_lock:
+        if _mi_token["value"] and now < (_mi_token["exp"] - 60):
+            return _mi_token["value"]  # cached
+        scopes: list[str] = []
+        if CLIENTID:
+            scopes.append(f"{CLIENTID}/.default")
+            scopes.append(f"api://{CLIENTID}/.default")
+            scopes.append(f"{CLIENTID}")
+        scopes.append("https://graph.microsoft.com/.default")
+        last_err: Exception | None = None
+        for scope_try in scopes:
+            try:
+                token_obj = managed_identity_credential.get_token(scope_try)
+                if token_obj and token_obj.token:
+                    _mi_token["value"] = token_obj.token
+                    _mi_token["exp"] = getattr(token_obj, 'expires_on', now + 300)
+                    logger.debug("[mi-api-token] acquired scope=%s exp=%s", scope_try, _mi_token["exp"])
+                    return token_obj.token
+            except Exception as e:  # noqa: BLE001 - diagnostics
+                last_err = e
+                logger.debug("[mi-api-token] scope attempt failed %s: %s", scope_try, e)
+        raise RuntimeError(f"Managed Identity token acquisition failed for API. Last error: {last_err}")
 
 # Lightweight startup probe endpoint: returns 200 only when a Managed Identity token can be acquired
 @app.route("/startupz", methods=["GET"]) 
@@ -493,8 +540,7 @@ def load_data_to_session():
 
     headers = {
         "Content-Type" : "application/json",
-        "Authorization" : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
-        "X-MS-API-ROLE" : "MyToDoApp"
+        "Authorization" : f"Bearer {_get_managed_identity_api_token()}"
     }
 
     query = f"""
@@ -590,8 +636,7 @@ def add_todo():
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
-        'X-MS-API-ROLE' : 'MyToDoApp'
+        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
     }
 
     # Send the request
@@ -614,7 +659,7 @@ def details(id):
     
     global api_url
     
-    todo = get_todo_by_id(id, auth.get_token_for_user(scope)['access_token'], api_url)
+    todo = get_todo_by_id(id, api_url)
 
     if todo is None:
         return redirect(url_for('index'))
@@ -633,7 +678,7 @@ def edit(id):
     
     global api_url
     
-    todo = get_todo_by_id(id, auth.get_token_for_user(scope)['access_token'], api_url)
+    todo = get_todo_by_id(id, api_url)
 
     if todo is None:
         return redirect(url_for('index'))
@@ -694,8 +739,7 @@ def update_todo(id):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
-        'X-MS-API-ROLE' : 'MyToDoApp'
+        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
     }
 
     # Send the request
@@ -734,8 +778,7 @@ def remove_todo(id):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
-        'X-MS-API-ROLE' : 'MyToDoApp'
+        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
     }
 
     # Send the request
@@ -763,7 +806,7 @@ async def recommend(id, refresh=False):
     session["selectedTab"] = Tab.RECOMMENDATIONS
     recommendation_engine = RecommendationEngine()
     
-    todo = get_todo_by_id(id, auth.get_token_for_user(scope)['access_token'], api_url)
+    todo = get_todo_by_id(id, api_url)
 
     if todo is None:
         return redirect(url_for('index'))
@@ -807,8 +850,7 @@ async def recommend(id, refresh=False):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
-        'X-MS-API-ROLE' : 'MyToDoApp'
+        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
     }
 
     # Send the request to save the recommendations
@@ -832,7 +874,7 @@ def completed(id, complete):
 
     global api_url
     
-    todo = get_todo_by_id(id, auth.get_token_for_user(scope)['access_token'], api_url)
+    todo = get_todo_by_id(id, api_url)
 
     if todo is None:
         return redirect(url_for('index'))
@@ -857,8 +899,7 @@ def completed(id, complete):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}",
-        'X-MS-API-ROLE' : 'MyToDoApp'
+        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
     }
 
     # Prepare the variables for the mutation
@@ -919,7 +960,7 @@ def logout():
     return redirect(auth.log_out(url_for("index", _external=True)))
 
 
-def get_todo_by_id(id, token, api_url):
+def get_todo_by_id(id, api_url):
 
     # Prepare the GraphQL query to fetch the todo item
     query = """
@@ -940,7 +981,7 @@ def get_todo_by_id(id, token, api_url):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {auth.get_token_for_user(scope)['access_token']}"
+        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
     }
 
     # Send the request to fetch the todo item

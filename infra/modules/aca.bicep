@@ -23,6 +23,9 @@ param revisionSuffix string
 param sqlConnectionString string
 @secure()
 param redisConnectionString string
+// The App Registration Client ID for the API (middle tier) - used to configure DAB auth
+// This is the "audience" that the front-end app will request tokens for when calling the API
+param clientId string
 
 resource openAi 'Microsoft.CognitiveServices/accounts@2023-05-01' existing = {
   name: openAiName
@@ -261,6 +264,13 @@ resource middleTier 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'AZURE_CLIENT_ID'
               value: azidentity.properties.clientId
+            }
+            {name: 'CLIENT_ID'
+             value: clientId
+            }
+            {
+              name: 'TENANT_ID'
+              value: subscription().tenantId
             }
           ]
         }

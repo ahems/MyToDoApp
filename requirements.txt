@@ -1,11 +1,6 @@
 openai
 flask
 flask[async]
-flask_sqlalchemy
-sqlalchemy
-semantic-kernel
-pyodbc
-fastapi
 azure-keyvault-secrets
 azure-identity
 azure-monitor-opentelemetry
@@ -15,3 +10,4 @@ requests>=2,<3
 identity>=0.5.1,<0.6
 redis
 redis-entraid>=0.2.0
+python-dotenv

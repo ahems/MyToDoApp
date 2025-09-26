@@ -185,6 +185,7 @@ module containerApp 'modules/aca.bicep' = {
     sqlConnectionString: database.outputs.connectionString
     revisionSuffix:revisionSuffix
     redisConnectionString: redis.outputs.entraConnectionString
+    clientId: webAppClientId
   }
   dependsOn: [
     appinsights
