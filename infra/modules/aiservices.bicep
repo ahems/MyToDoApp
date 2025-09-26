@@ -112,7 +112,7 @@ resource openAiUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-
   name: guid(account.id, identityName, 'openai-user')
   scope: account
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'bfa99463-55dc-4b5c-abc1-0456fb2698ac') // Cognitive Services OpenAI User
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a001fd3d-188f-4b5d-821b-7da978bf7442') // Cognitive Services OpenAI Contributor
     principalId: azidentity.properties.principalId
     principalType: 'ServicePrincipal'
   }
@@ -124,7 +124,7 @@ resource openAiUserLocalRoleAssignment 'Microsoft.Authorization/roleAssignments@
   name: guid(account.id, aadAdminObjectId, 'openai-user')
   scope: account
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'bfa99463-55dc-4b5c-abc1-0456fb2698ac') // Cognitive Services OpenAI User
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a001fd3d-188f-4b5d-821b-7da978bf7442') // Cognitive Services OpenAI Contributor
     principalId: aadAdminObjectId
     principalType: 'User'
   }

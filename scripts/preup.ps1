@@ -232,9 +232,10 @@ Ensure-AzLogin -TenantId $tenantId -SubscriptionId $subscriptionId
 
 # If subscription id is missing but resource group is already known, attempt to discover the subscription
 if (-not $subscriptionId) {
+	Write-Host "No value for AZURE_SUBSCRIPTION_ID found." -ForegroundColor DarkCyan
 	$rgForLookup = Get-AzdValue -Name 'AZURE_RESOURCE_GROUP'
 	if ($rgForLookup) {
-		Write-Host "Attempting to resolve subscription id for resource group '$rgForLookup'..." -ForegroundColor DarkCyan
+		Write-Host "Attempting to resolve AZURE_SUBSCRIPTION_ID for resource group '$rgForLookup'..." -ForegroundColor DarkCyan
 		$resolvedSubId = $null
 
 		# First try current context (fast path)
@@ -324,6 +325,18 @@ if (-not $resourceGroup) {
 	}
 }
 
+# SECOND-CHANCE SUBSCRIPTION RESOLUTION
+if (-not $subscriptionId) {
+	$ctx = Get-AzContext -ErrorAction SilentlyContinue
+	if ($ctx -and $ctx.Subscription -and $ctx.Subscription.Id) {
+		$subscriptionId = $ctx.Subscription.Id
+		Set-AzdValue -Name 'AZURE_SUBSCRIPTION_ID' -Value $subscriptionId
+		Write-Host "Captured subscription id from current context: $subscriptionId" -ForegroundColor Green
+	} else {
+		Write-Warning "Subscription id still not resolved after resource group handling. Model enumeration will fail without it."
+	}
+}
+
 $accountName = Get-AzdValue -Name 'AZURE_OPENAI_ACCOUNT_NAME'
 if (-not $accountName) {
 	$hash = ([System.BitConverter]::ToString((New-Guid).ToByteArray()) -replace '-','').Substring(0,8).ToLower()
@@ -335,24 +348,76 @@ if (-not $accountName) {
 Ensure-OpenAIAccount -SubId $subscriptionId -Rg $resourceGroup -Acct $accountName -Loc $location
 
 Write-Host "Enumerating models for account '$accountName' in region '$location'..." -ForegroundColor Cyan
+$null = if (-not $subscriptionId) { throw 'Subscription id is missing; cannot enumerate models. Ensure you are logged in (Connect-AzAccount) and that a subscription is selected (Set-AzContext).' }
 $models = Get-AccountModelsMultiVersion -SubId $subscriptionId -Rg $resourceGroup -Acct $accountName
-if (-not $models -or $models.Count -eq 0) { Write-Warning 'No models returned; skipping model selection.'; return }
+if (-not $models -or $models.Count -eq 0) { throw 'No models returned from Azure OpenAI account; aborting preup hook.' }
 
-# Get quota for each model
-$allQuota = @()
-$total = $models.Count
-$i = 0
-foreach ($m in $models) {
-	$i++
-	$fmt = if ([string]::IsNullOrWhiteSpace($m.format)) { 'OpenAI' } else { $m.format }
-	try {
-		Write-Host "  [$i/$total] Getting available quota for Model '$($m.name)', version '$($m.version)'..." -ForegroundColor DarkCyan
-		$quota = Get-AoaiModelAvailableQuota -ResourceGroupName $resourceGroup -AccountName $accountName -ModelName $m.name -ModelVersion $m.version -ModelFormat $fmt -ErrorAction Stop
-		if ($quota) { $allQuota += $quota }
-	} catch { Write-Warning "Failed quota retrieval for Model $($m.name), version $($m.version): $($_.Exception.Message)" }
+# Filter to OpenAI models only (other provider models cause quota retrieval warnings due to ValidateSet('OpenAI'))
+$originalModelCount = $models.Count
+$models = $models | Where-Object { [string]::IsNullOrWhiteSpace($_.format) -or $_.format -ieq 'OpenAI' }
+if ($models.Count -lt $originalModelCount) {
+	Write-Host ("Filtered models: using {0} OpenAI models out of {1} total (skipped {2} non-OpenAI)." -f $models.Count, $originalModelCount, ($originalModelCount - $models.Count)) -ForegroundColor DarkGray
 }
 
-if ($allQuota.Count -eq 0) { Write-Warning 'No quota data collected.'; return }
+# Get quota for each model (parallel when possible)
+$allQuota = @()
+$pwshSupportsParallel = $false
+try {
+	$feParams = (Get-Command ForEach-Object).Parameters
+	if ($PSVersionTable.PSVersion.Major -ge 7 -and $feParams.ContainsKey('Parallel')) { $pwshSupportsParallel = $true }
+} catch { }
+$throttle = [int]([Environment]::GetEnvironmentVariable('AOAI_QUOTA_DOP'))
+if (-not $throttle -or $throttle -lt 1) { $throttle = 8 }
+
+if ($pwshSupportsParallel) {
+	Write-Host ("Retrieving quota in parallel (ThrottleLimit={0})..." -f $throttle) -ForegroundColor DarkGreen
+	# Pre-fetch account once to avoid doing it per parallel task
+	try {
+		$acctObj = Get-AzCognitiveServicesAccount -ResourceGroupName $resourceGroup -Name $accountName -ErrorAction Stop
+	} catch {
+		Write-Warning "Failed to retrieve Cognitive Services account for quota lookups: $($_.Exception.Message). Falling back to sequential mode."
+		$pwshSupportsParallel = $false
+	}
+	if ($pwshSupportsParallel) {
+		$acctSubId = ($acctObj.Id -split '/')[2]
+		$acctLoc   = $acctObj.Location
+		$apiVersionCap = '2024-10-01'
+		$quotas = $models | ForEach-Object -Parallel {
+			$fmt = if ([string]::IsNullOrWhiteSpace($_.format)) { 'OpenAI' } else { $_.format }
+			try {
+				Write-Host "  [Parallel] Getting available quota for Model '$($_.name)' v '$($_.version)'" -ForegroundColor DarkCyan
+				function _Encode([string]$v){ [System.Uri]::EscapeDataString($v) }
+				$relPath = "/subscriptions/$($using:acctSubId)/providers/Microsoft.CognitiveServices/modelCapacities?api-version=$($using:apiVersionCap)&modelFormat=$(_Encode $fmt)&modelName=$(_Encode $_.name)&modelVersion=$(_Encode $_.version)"
+				$resp = Invoke-AzRestMethod -Method GET -Path $relPath -ErrorAction Stop
+				$payload = $resp.Content | ConvertFrom-Json
+				if (-not $payload.value) { return }
+				$rows = $payload.value | Where-Object { $_.location -ieq $using:acctLoc }
+				if (-not $rows) { return }
+				$rows = $rows | Where-Object { $_.properties.skuName -notmatch 'Batch$' } | Where-Object { ([int]$_.properties.availableCapacity) -gt 0 }
+				if (-not $rows) { return }
+				$rows | ForEach-Object { [pscustomobject]@{ SubscriptionId=$using:acctSubId; Location=$_.location; SkuName=$_.properties.skuName; ModelFormat=$_.properties.model.format; ModelName=$_.properties.model.name; ModelVersion=$_.properties.model.version; AvailableCapacity=$_.properties.availableCapacity } } | Sort-Object Location, SkuName
+			} catch {
+				Write-Warning "Failed quota retrieval for Model $($_.name) v $($_.version): $($_.Exception.Message)"
+			}
+		} -ThrottleLimit $throttle
+		foreach ($q in $quotas) { if ($q) { $allQuota += $q } }
+	}
+} else {
+	Write-Host "Parallel quota retrieval not supported in this PowerShell version; running sequentially." -ForegroundColor Yellow
+	$total = $models.Count
+	$i = 0
+	foreach ($m in $models) {
+		$i++
+		$fmt = if ([string]::IsNullOrWhiteSpace($m.format)) { 'OpenAI' } else { $m.format }
+		try {
+			Write-Host "  [$i/$total] Getting available quota for Model '$($m.name)', version '$($m.version)'..." -ForegroundColor DarkCyan
+			$quota = Get-AoaiModelAvailableQuota -ResourceGroupName $resourceGroup -AccountName $accountName -ModelName $m.name -ModelVersion $m.version -ModelFormat $fmt -ErrorAction Stop
+			if ($quota) { $allQuota += $quota }
+		} catch { Write-Warning "Failed quota retrieval for Model $($m.name), version $($m.version): $($_.Exception.Message)" }
+	}
+}
+
+if (-not $allQuota -or $allQuota.Count -eq 0) { Write-Warning 'No quota data collected.'; return }
 
 Write-Host "Sorting quota results..." -ForegroundColor DarkGreen
 $sorted = $allQuota | Sort-Object -Property @{Expression={ [int]$_.AvailableCapacity }; Descending=$true}, @{Expression={$_.ModelVersion}; Descending=$true}

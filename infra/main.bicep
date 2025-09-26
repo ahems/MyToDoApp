@@ -218,3 +218,7 @@ output API_URL string = containerApp.outputs.API_URL
 
 // Azure Client Id of the user-assigned managed identity
 output AZURE_CLIENT_ID string = identity.outputs.clientId
+
+output USER_MANAGED_IDENTITY_NAME string = identityName
+
+output SQL_SERVER_NAME string = sqlServerName

@@ -241,7 +241,7 @@ END
     $cmd.CommandText = $tableSql
     $null = $cmd.ExecuteNonQuery()
     $conn.Close()
-    Write-Output "Verified existence of table dbo.todo."
+    Write-Output "Created table dbo.todo."
 }
 catch {
     Write-Error "Failed to execute T-SQL for managed identity via ADO.NET: $($_.Exception.Message)"
