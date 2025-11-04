@@ -35,7 +35,7 @@
     "forwardPorts": [
         50505
     ],
-    "postCreateCommand": "az bicep install && git lfs install || true",
+    "postCreateCommand": "az bicep install",
     "hostRequirements": {
         "memory": "8gb"
     }
