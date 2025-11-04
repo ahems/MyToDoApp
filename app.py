@@ -2,6 +2,7 @@ import os
 import json
 from re import S
 import identity.web
+import msal
 from redis import Redis
 # Try to import the enum for id_type; fall back to string literals if unavailable
 try:
@@ -53,6 +54,10 @@ key_vault_name = os.environ.get("KEY_VAULT_NAME")
 AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
 REDIS_CONNECTION_STRING = os.environ.get("REDIS_CONNECTION_STRING")
 IS_LOCALHOST = os.environ.get("IS_LOCALHOST", "false").lower() == "true"
+API_APP_ID_URI = os.environ.get("API_APP_ID_URI")
+if not API_APP_ID_URI:
+    raise ValueError("API_APP_ID_URI environment variable is not set.")
+API_APP_SCOPE = f"{API_APP_ID_URI.rstrip('/')}/.default"
 
 app_insights_connection_string = os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING")
 if not app_insights_connection_string:
@@ -203,6 +208,15 @@ else:
     CLIENTID=os.environ.get("CLIENTID");
     CLIENTSECRET=os.environ.get("CLIENTSECRET");
 
+if not CLIENTID or not CLIENTSECRET or not AUTHORITY:
+    raise ValueError("CLIENTID, CLIENTSECRET, and AUTHORITY must be configured for app-to-API authentication.")
+
+_api_client_app = msal.ConfidentialClientApplication(
+    client_id=CLIENTID,
+    client_credential=CLIENTSECRET,
+    authority=AUTHORITY,
+)
+
 redirect_uri = os.environ.get("REDIRECT_URI")
 if not redirect_uri:
     if AZURE_CLIENT_ID and client is not None:
@@ -218,45 +232,37 @@ else:
     logger.info("Using API URL: %s", api_url)
 
 # -------------------------------------------------
-# Managed Identity token helper for API access
+# Confidential client token helper for API access
 # -------------------------------------------------
 from threading import Lock as _Lock
-_mi_token_lock = _Lock()
-_mi_token: Dict[str, Any] = {"value": None, "exp": 0}
+_api_token_lock = _Lock()
+_api_token_cache: Dict[str, Any] = {"value": None, "exp": 0}
 
-def _get_managed_identity_api_token() -> str:
-    """Acquire (and cache) a Managed Identity access token for the Data API Builder backend.
+def _get_api_access_token() -> str:
+    """Acquire (and cache) an application access token for the Data API Builder backend.
 
-    Strategy:
-      1. Try audience style: api://CLIENTID/.default (custom app registration).
-      2. Fallback to CLIENTID/.default (some configurations accept this form).
-      3. Fallback to plain CLIENTID.
-      4. Final (should not normally be used) fallback to https://graph.microsoft.com/.default so we surface auth vs network errors.
+    Uses the web application's confidential client (client id/secret) to request
+    an app-only token scoped to the API application registration (API_APP_ID_URI).
     """
     import time
     now = int(time.time())
-    with _mi_token_lock:
-        if _mi_token["value"] and now < (_mi_token["exp"] - 60):
-            return _mi_token["value"]  # cached
-        scopes: list[str] = []
-        if CLIENTID:
-            scopes.append(f"{CLIENTID}/.default")
-            scopes.append(f"api://{CLIENTID}/.default")
-            scopes.append(f"{CLIENTID}")
-        scopes.append("https://graph.microsoft.com/.default")
-        last_err: Exception | None = None
-        for scope_try in scopes:
-            try:
-                token_obj = managed_identity_credential.get_token(scope_try)
-                if token_obj and token_obj.token:
-                    _mi_token["value"] = token_obj.token
-                    _mi_token["exp"] = getattr(token_obj, 'expires_on', now + 300)
-                    logger.debug("[mi-api-token] acquired scope=%s exp=%s", scope_try, _mi_token["exp"])
-                    return token_obj.token
-            except Exception as e:  # noqa: BLE001 - diagnostics
-                last_err = e
-                logger.debug("[mi-api-token] scope attempt failed %s: %s", scope_try, e)
-        raise RuntimeError(f"Managed Identity token acquisition failed for API. Last error: {last_err}")
+    with _api_token_lock:
+        cached_token = _api_token_cache.get("value")
+        cached_exp = _api_token_cache.get("exp", 0)
+        if cached_token and now < (cached_exp - 60):
+            return cached_token
+
+        result = _api_client_app.acquire_token_for_client(scopes=[API_APP_SCOPE])
+        access_token = result.get("access_token")
+        if not access_token:
+            error_detail = result.get("error_description") or result.get("error") or "unknown error"
+            raise RuntimeError(f"Failed to acquire API access token: {error_detail}")
+
+        expires_in = int(result.get("expires_in", 300))
+        _api_token_cache["value"] = access_token
+        _api_token_cache["exp"] = now + expires_in
+        logger.debug("[api-token] acquired app token; expires_in=%s", expires_in)
+        return access_token
 
 # Lightweight startup probe endpoint: returns 200 only when a Managed Identity token can be acquired
 @app.route("/startupz", methods=["GET"]) 
@@ -540,7 +546,7 @@ def load_data_to_session():
 
     headers = {
         "Content-Type" : "application/json",
-        "Authorization" : f"Bearer {_get_managed_identity_api_token()}"
+        "Authorization" : f"Bearer {_get_api_access_token()}"
     }
 
     query = f"""
@@ -636,7 +642,7 @@ def add_todo():
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
+        'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
     # Send the request
@@ -739,7 +745,7 @@ def update_todo(id):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
+        'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
     # Send the request
@@ -778,7 +784,7 @@ def remove_todo(id):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
+        'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
     # Send the request
@@ -850,7 +856,7 @@ async def recommend(id, refresh=False):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
+        'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
     # Send the request to save the recommendations
@@ -899,7 +905,7 @@ def completed(id, complete):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
+        'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
     # Prepare the variables for the mutation
@@ -981,7 +987,7 @@ def get_todo_by_id(id, api_url):
 
     headers = {
         'Content-Type' : 'application/json',
-        'Authorization' : f"Bearer {_get_managed_identity_api_token()}"
+        'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
     # Send the request to fetch the todo item

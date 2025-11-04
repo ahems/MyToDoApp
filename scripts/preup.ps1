@@ -1,9 +1,12 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+# PSScriptAnalyzer SuppressMessage = 'PSUseApprovedVerbs', 'Ensure prefix retained for idempotent helper functions.'
+
 #############################################
 # Helpers: PSGallery trust & Module handling
 #############################################
+# PSScriptAnalyzer SuppressMessage = PSUseApprovedVerbs "Ensure prefix retained for idempotent helper functions."
 function Ensure-PsGalleryTrusted {
 	try {
 		$gallery = Get-PSRepository -Name 'PSGallery' -ErrorAction Stop
@@ -17,6 +20,7 @@ function Ensure-PsGalleryTrusted {
 	}
 }
 
+# PSScriptAnalyzer SuppressMessage = PSUseApprovedVerbs "Ensure prefix retained for idempotent helper functions."
 function Ensure-Module {
 	param(
 		[Parameter(Mandatory)][string]$Name,
@@ -67,6 +71,7 @@ function Set-AzdValue {
 #############################################
 # Azure Login Context
 #############################################
+# PSScriptAnalyzer SuppressMessage = PSUseApprovedVerbs "Ensure prefix retained for idempotent helper functions."
 function Ensure-AzLogin {
 	param([string]$TenantId,[string]$SubscriptionId)
 	if (-not (Get-AzContext -ErrorAction SilentlyContinue)) {
@@ -89,6 +94,7 @@ function Ensure-AzLogin {
 #############################################
 # Entra ID (AAD) Application + Secret
 #############################################
+# PSScriptAnalyzer SuppressMessage = PSUseApprovedVerbs "Ensure prefix retained for idempotent helper functions."
 function Ensure-AppRegistration {
 	param(
 		[Parameter(Mandatory)][string]$AppDisplayName
@@ -96,7 +102,7 @@ function Ensure-AppRegistration {
 	$existing = Get-AzADApplication -DisplayName $AppDisplayName -ErrorAction SilentlyContinue
 	if (-not $existing) {
 		Write-Host "Creating Azure AD application '$AppDisplayName'..." -ForegroundColor Green
-		$newApp = New-AzADApplication -DisplayName $AppDisplayName
+		New-AzADApplication -DisplayName $AppDisplayName | Out-Null
 		Start-Sleep -Seconds 5
 		$app = Get-AzADApplication -DisplayName $AppDisplayName
 		if (-not $app) { throw "Failed to retrieve app registration after creation." }
@@ -128,12 +134,204 @@ function Ensure-AppRegistration {
 	}
 }
 
+# PSScriptAnalyzer SuppressMessage = PSUseApprovedVerbs "Ensure helper naming aligns with rest of script."
+function Ensure-ApiAppRegistration {
+	param(
+		[Parameter(Mandatory)][string]$ApiAppDisplayName,
+		[Parameter(Mandatory)][string]$WebAppClientId
+	)
+
+	if (-not $WebAppClientId) { throw 'Web application client id not available; ensure Ensure-AppRegistration ran first.' }
+
+	# Initialize variables
+	$appRole = $null
+	$appRoleId = $null
+
+	$apiApp = Get-AzADApplication -DisplayName $ApiAppDisplayName -Select AppRole,AppId,Id,DisplayName -ErrorAction SilentlyContinue
+	$identifierUri = $null  # Don't use old environment variable, generate fresh based on new app
+	$appRoleValue = 'Api.Access'
+	$appRoleDescription = 'Allows the web application to call the API.'
+
+	if (-not $apiApp) {
+		Write-Host "Creating API Azure AD application '$ApiAppDisplayName'..." -ForegroundColor Green
+		# Create the app first without identifier URI to get the app ID
+		$appRoleId = [Guid]::NewGuid()
+		$roleSpec = @{
+			AllowedMemberTypes = @('Application')
+			Description = $appRoleDescription
+			DisplayName = $appRoleValue
+			Id = $appRoleId
+			IsEnabled = $true
+			Value = $appRoleValue
+		}
+		New-AzADApplication -DisplayName $ApiAppDisplayName -AppRole $roleSpec -SignInAudience 'AzureADMyOrg' | Out-Null
+		Start-Sleep -Seconds 5
+		$apiApp = Get-AzADApplication -DisplayName $ApiAppDisplayName -Select AppRole,AppId,Id,DisplayName
+		if (-not $apiApp) { throw 'Failed to retrieve API app registration after creation.' }
+		if (-not $apiApp.AppId) { throw 'API app was created but AppId is missing.' }
+		
+		# Now set the identifier URI using the app ID
+		if (-not $identifierUri) { $identifierUri = "api://$($apiApp.AppId)" }
+		Update-AzADApplication -ObjectId $apiApp.Id -IdentifierUris @($identifierUri) | Out-Null
+		Start-Sleep -Seconds 5
+		$apiApp = Get-AzADApplication -DisplayName $ApiAppDisplayName -Select AppRole,AppId,Id,DisplayName
+		
+		# Create mock app role object with known ID for newly created app
+		Write-Host "Creating mock app role object with known ID for newly created app..." -ForegroundColor Yellow
+		$appRole = [PSCustomObject]@{
+			Id = $appRoleId
+			Value = $appRoleValue
+			DisplayName = $appRoleValue
+			Description = $appRoleDescription
+		}
+	} else {
+		if (-not $identifierUri) {
+			# Get full app object to check IdentifierUris
+			$fullApiApp = Get-AzADApplication -DisplayName $ApiAppDisplayName
+			try {
+				if ($fullApiApp.IdentifierUris -and $fullApiApp.IdentifierUris.Count -gt 0) {
+					$identifierUri = $fullApiApp.IdentifierUris[0]
+				} else {
+					$identifierUri = "api://$($apiApp.AppId)"
+					Update-AzADApplication -ObjectId $apiApp.Id -IdentifierUris @($identifierUri) | Out-Null
+					$apiApp = Get-AzADApplication -DisplayName $ApiAppDisplayName -Select AppRole,AppId,Id,DisplayName
+				}
+			} catch {
+				Write-Host "Warning: Could not access IdentifierUris property, setting default identifier URI..." -ForegroundColor Yellow
+				$identifierUri = "api://$($apiApp.AppId)"
+				Update-AzADApplication -ObjectId $apiApp.Id -IdentifierUris @($identifierUri) | Out-Null
+				$apiApp = Get-AzADApplication -DisplayName $ApiAppDisplayName -Select AppRole,AppId,Id,DisplayName
+			}
+		}
+
+		$appRole = $null
+		try {
+			# Get full app object to check for existing roles
+			$fullApiAppForRoles = Get-AzADApplication -DisplayName $ApiAppDisplayName
+			if ($fullApiAppForRoles -and $fullApiAppForRoles.AppRole) {
+				$appRole = $fullApiAppForRoles.AppRole | Where-Object { $_.Value -eq $appRoleValue }
+				if ($appRole) { 
+					if ($appRole.GetType().IsArray -and $appRole.Count -gt 0) {
+						$appRole = $appRole[0] 
+					}
+					Write-Host "Found existing role '$appRoleValue' in API app - skipping creation" -ForegroundColor Green
+				}
+			}
+		} catch {
+			Write-Verbose "AppRole property not found or accessible on API app object." -Verbose:$false
+		}
+
+		if (-not $appRole) {
+			Write-Host "Adding application role '$appRoleValue' to API app..." -ForegroundColor DarkCyan
+			$appRoleId = [Guid]::NewGuid()
+			$roleSpec = @{
+				AllowedMemberTypes = @('Application')
+				Description = $appRoleDescription
+				DisplayName = $appRoleValue
+				Id = $appRoleId
+				IsEnabled = $true
+				Value = $appRoleValue
+			}
+			$existingRoles = @()
+			try {
+				if ($fullApiAppForRoles -and $fullApiAppForRoles.AppRole) {
+					foreach ($r in $fullApiAppForRoles.AppRole) {
+						$existingRoles += @{
+							AllowedMemberTypes = $r.AllowedMemberTypes
+							Description = $r.Description
+							DisplayName = $r.DisplayName
+							Id = [Guid]$r.Id
+							IsEnabled = [bool]$r.IsEnabled
+							Value = $r.Value
+						}
+					}
+				}
+			} catch {
+				Write-Verbose "AppRoles property not found or accessible on API app object during role enumeration." -Verbose:$false
+			}
+			$allRoles = $existingRoles + $roleSpec
+			Update-AzADApplication -ObjectId $apiApp.Id -AppRole $allRoles | Out-Null
+			Start-Sleep -Seconds 5
+			$apiApp = Get-AzADApplication -DisplayName $ApiAppDisplayName -Select AppRole,AppId,Id,DisplayName
+			$appRole = $null
+			try {
+				if ($apiApp -and $apiApp.AppRole) {
+					$appRole = $apiApp.AppRole | Where-Object { $_.Value -eq $appRoleValue }
+				}
+			} catch {
+				Write-Verbose "AppRole property not found or accessible on API app object after role update." -Verbose:$false
+			}
+			if ($appRole -and $appRole.Count -gt 0) { $appRole = $appRole[0] }
+			if (-not $appRole) { throw 'Failed to create API application role.' }
+		}
+	}
+
+	if (-not $identifierUri) {
+		$identifierUri = "api://$($apiApp.AppId)"
+		Update-AzADApplication -ObjectId $apiApp.Id -IdentifierUris @($identifierUri) | Out-Null
+		Start-Sleep -Seconds 5
+		$apiApp = Get-AzADApplication -DisplayName $ApiAppDisplayName -Select AppRole,AppId,Id,DisplayName
+	}
+
+	if (-not $appRole) {
+		Write-Host "DEBUG: API App object properties:" -ForegroundColor Red
+		Write-Host "AppId: $($apiApp.AppId)" -ForegroundColor Red
+		Write-Host "DisplayName: $($apiApp.DisplayName)" -ForegroundColor Red
+		Write-Host "AppRoles count: $(if ($apiApp.AppRoles) { $apiApp.AppRoles.Count } else { 'null or not accessible' })" -ForegroundColor Red
+		if ($apiApp.AppRoles) {
+			foreach ($role in $apiApp.AppRoles) {
+				Write-Host "Role Value: '$($role.Value)', Id: '$($role.Id)'" -ForegroundColor Red
+			}
+		}
+		throw "API application role '$appRoleValue' was not found after creation/update."
+	}
+	$apiRoleId = [string]$appRole.Id
+
+	$apiSp = Get-AzADServicePrincipal -ApplicationId $apiApp.AppId -ErrorAction SilentlyContinue
+	if (-not $apiSp) {
+		Write-Host "Creating service principal for API app..." -ForegroundColor DarkCyan
+		$apiSp = New-AzADServicePrincipal -ApplicationId $apiApp.AppId
+	}
+
+	$webSp = Get-AzADServicePrincipal -ApplicationId $WebAppClientId -ErrorAction SilentlyContinue
+	if (-not $webSp) {
+		Write-Host "Creating service principal for web app registration..." -ForegroundColor DarkCyan
+		$webSp = New-AzADServicePrincipal -ApplicationId $WebAppClientId
+	}
+
+	$assignmentExists = $false
+	try {
+		$assignments = Get-AzADServicePrincipalAppRoleAssignment -ServicePrincipalId $webSp.Id -ErrorAction Stop
+		if ($assignments) {
+			$assignmentExists = $assignments | Where-Object { $_.ResourceId -eq $apiSp.Id -and ([string]$_.AppRoleId -eq $apiRoleId) }
+			if ($assignmentExists) {
+				Write-Host "Role assignment already exists between web app and API app - skipping creation" -ForegroundColor Green
+			}
+		}
+	} catch {
+		Write-Verbose "Unable to enumerate existing role assignments: $($_.Exception.Message)" -Verbose:$false
+	}
+
+	if (-not $assignmentExists) {
+		Write-Host "Assigning API app role '$appRoleValue' to web app service principal..." -ForegroundColor DarkCyan
+		New-AzADServicePrincipalAppRoleAssignment -ServicePrincipalId $webSp.Id -ResourceId $apiSp.Id -AppRoleId ([Guid]$apiRoleId) | Out-Null
+	}
+
+	Set-AzdValue -Name 'API_APP_ID' -Value $apiApp.AppId
+	Set-AzdValue -Name 'API_APP_OBJECT_ID' -Value $apiApp.Id
+	Set-AzdValue -Name 'API_APP_ROLE_ID' -Value $apiRoleId
+	Set-AzdValue -Name 'API_APP_ID_URI' -Value $identifierUri
+
+	Write-Host "API app registration ensured. Audience: $identifierUri" -ForegroundColor Green
+}
+
 #############################################
 # Azure OpenAI Account + Model Selection
 #############################################
 # Minimal model (only fields we actually use)
 class Model { [string]$format; [string]$name; [string]$version }
 
+# PSScriptAnalyzer SuppressMessage = PSUseApprovedVerbs "Ensure helper naming aligns with rest of script."
 function Ensure-OpenAIAccount {
 	param([string]$SubId,[string]$Rg,[string]$Acct,[string]$Loc)
 	if ([string]::IsNullOrWhiteSpace($Acct)) { throw 'Ensure-OpenAIAccount received an empty account name.' }
@@ -291,6 +489,12 @@ if (-not $nameVal -or -not $objectIdVal) {
 # 1. App Registration
 $appDisplayName = 'MyToDoApp'
 Ensure-AppRegistration -AppDisplayName $appDisplayName
+
+# 1a. API App Registration
+$apiAppDisplayName = 'MyToDoApp-Api'
+$webClientId = Get-AzdValue -Name 'CLIENT_ID'
+if (-not $webClientId) { throw 'CLIENT_ID is missing after web app registration; cannot configure API registration.' }
+Ensure-ApiAppRegistration -ApiAppDisplayName $apiAppDisplayName -WebAppClientId $webClientId
 
 # 2. Azure OpenAI provisioning + model selection (skip if already fully selected)
 $existingChatComplete = (Get-AzdValue -Name 'chatGptDeploymentVersion') -and (Get-AzdValue -Name 'chatGptSkuName') -and (Get-AzdValue -Name 'chatGptModelName') -and (Get-AzdValue -Name 'availableChatGptDeploymentCapacity')
