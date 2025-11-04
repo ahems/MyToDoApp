@@ -38,9 +38,6 @@ services:
         docker:
             path: dockerfile
             remoteBuild: true
-            build:
-                args:
-                    USE_AUTH: "true"
 infra:
   provider: bicep
   path: ./infra

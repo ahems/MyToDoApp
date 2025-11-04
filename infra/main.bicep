@@ -22,6 +22,7 @@ param useFreeLimit bool
 param webAppClientId string
 @secure()
 param webAppClientSecret string
+param apiAppIdUri string
 param openAiDeploymentName string = 'chat'
 param chatGptModelName string
 param chatGptDeploymentName string = 'chat'
@@ -186,6 +187,7 @@ module containerApp 'modules/aca.bicep' = {
     revisionSuffix:revisionSuffix
     redisConnectionString: redis.outputs.entraConnectionString
     clientId: webAppClientId
+    apiAppIdUri: apiAppIdUri
   }
   dependsOn: [
     appinsights

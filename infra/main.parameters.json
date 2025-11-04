@@ -17,6 +17,9 @@
     "webAppClientId": {
       "value": "${CLIENT_ID}"
     },
+    "apiAppIdUri": {
+      "value": "${API_APP_ID_URI}"
+    },
     "restoreOpenAi": {
       "value": false
     },

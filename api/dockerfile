@@ -6,34 +6,8 @@ RUN dotnet new tool-manifest
 
 RUN dotnet tool install Microsoft.DataApiBuilder
 
-RUN dotnet tool run dab -- init --auth.provider "AzureAD" --auth.audience "@env('API_APP_ID_URI')" --auth.issuer "https://login.microsoftonline.com/@env('TENANT_ID')/v2.0" --database-type "mssql" --connection-string "@env('DATABASE_CONNECTION_STRING')" \
-	&& python3 - <<'PY'
-import json
-from pathlib import Path
-
-config_path = Path('dab-config.json')
-cfg = json.loads(config_path.read_text())
-
-auth = cfg.setdefault('authentication', {})
-auth['provider'] = 'AzureAD'
-auth['audience'] = "@env('API_APP_ID_URI')"
-auth['issuer'] = "https://login.microsoftonline.com/@env('TENANT_ID')/v2.0"
-
-client_ids = set(auth.get('clientApplicationIds', []))
-client_ids.add("@env('CLIENT_ID')")
-auth['clientApplicationIds'] = sorted(client_ids)
-
-config_path.write_text(json.dumps(cfg, indent=2) + '\n')
-PY
-
-RUN dotnet tool run dab -- add todo --source "dbo.ToDo" --permissions "authenticated:*";
-
-# NOTE: Cannot pass @env('VAR') directly on the command line because the .NET host treats
-# arguments starting with @ as response file references. We add a dummy value then
-# replace it in the generated dab-config.json with the @env(...) placeholder so that
-# runtime substitution still happens inside the JSON config.
-RUN dotnet tool run dab add-telemetry --app-insights-enabled true --app-insights-conn-string "DUMMY_AI_CONN_STRING" \
-	&& sed -i "s/\"connection-string\": \"DUMMY_AI_CONN_STRING\"/\"connection-string\": \"@env('APPLICATIONINSIGHTS_CONNECTION_STRING')\"/" dab-config.json
+# Copy the pre-configured dab-config.json file
+COPY dab-config.json .
 
 FROM mcr.microsoft.com/azure-databases/data-api-builder
 
