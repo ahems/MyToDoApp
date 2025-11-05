@@ -38,6 +38,7 @@ param availableEmbeddingDeploymentCapacity int
 param revisionSuffix string = toLower(substring(replace(newGuid(),'-',''), 0, 8))
 param AIServicesKind string = 'AIServices'
 param publicNetworkAccess string = 'Enabled'
+param sqlDatabaseName string
 
 var chatGptDeploymentCapacity = availableChatGptDeploymentCapacity / 10
 var embeddingDeploymentCapacity = availableEmbeddingDeploymentCapacity / 10
@@ -129,6 +130,7 @@ module database 'modules/database.bicep' = {
     location: location
     identityName: identityName
     useFreeLimit: useFreeLimit
+    sqlDatabaseName: sqlDatabaseName
   }
   dependsOn: [
     keyvault

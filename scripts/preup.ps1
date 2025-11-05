@@ -512,6 +512,14 @@ if (-not (Get-AzdValue -Name 'AZURE_LOCATION')) {
 	Write-Host "Set default AZURE_LOCATION = $location" -ForegroundColor Cyan
 }
 
+# Get SQL database name from azd environment, default to 'todo' if not set
+$sqlDatabaseName = (azd env get-value 'SQL_DATABASE_NAME' 2>$null).Trim()
+if ($sqlDatabaseName -ceq "ERROR: key 'SQL_DATABASE_NAME' not found in the environment values" -or [string]::IsNullOrWhiteSpace($sqlDatabaseName)) {
+    $sqlDatabaseName = 'todo'
+    Write-Output "SQL_DATABASE_NAME not found in azd environment. Setting default: '$sqlDatabaseName'"
+    azd env set 'SQL_DATABASE_NAME' $sqlDatabaseName | Out-Null
+}
+
 $resourceGroup = Get-AzdValue -Name 'AZURE_RESOURCE_GROUP'
 $envName = Get-AzdValue -Name 'AZURE_ENV_NAME'
 if (-not $resourceGroup) {

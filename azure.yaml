@@ -12,14 +12,14 @@ hooks:
     interactive: true
   postprovision:
     shell: pwsh
-    run: ./scripts/configure-database.ps1
+    run: ./scripts/postprovision.ps1
     interactive: true
   postdown:
     shell: pwsh
     run: ./scripts/postdown.ps1
     interactive: true
 services:
-    my-to-do-app:
+    app:
         project: .
         host: containerapp
         language: python
@@ -29,9 +29,9 @@ services:
         hooks:
             postdeploy:
               shell: pwsh
-              run: ./scripts/update-app.ps1
+              run: ./scripts/postdeploy.ps1
               interactive: true
-    my-to-do-api:
+    api:
         project: ./api
         host: containerapp
         language: python

@@ -26,6 +26,9 @@
     "useFreeLimit": {
       "value": false
     },
+    "sqlDatabaseName": {
+      "value": "${SQL_DATABASE_NAME}"
+    },    
     "cognitiveservicesname": {
       "value": "${AZURE_OPENAI_ACCOUNT_NAME}"
     },

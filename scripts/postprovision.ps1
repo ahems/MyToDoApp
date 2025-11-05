@@ -36,11 +36,16 @@ Import-Module Az.Resources -ErrorAction Stop
 Import-Module Az.ManagedServiceIdentity -ErrorAction Stop
 Import-Module Az.Sql -ErrorAction Stop
 
-# Database naming & connection string pieces
-$sqlDatabaseName = 'todo'
-
 # Get tenant ID from azd environment (trim to avoid stray newlines)
 $tenantId = (azd env get-value 'TENANT_ID' 2>$null).Trim()
+
+# Get SQL database name from azd environment, default to 'todo' if not found
+$sqlDatabaseName = (azd env get-value 'SQL_DATABASE_NAME' 2>$null).Trim()
+if ($sqlDatabaseName -ceq "ERROR: key 'SQL_DATABASE_NAME' not found in the environment values" -or [string]::IsNullOrWhiteSpace($sqlDatabaseName)) {
+    $sqlDatabaseName = 'todo'
+} else {
+    Write-Output "Using SQL database name: '$sqlDatabaseName'"
+}
 
 # Authenticate if not already logged in
 if (-not (Get-AzContext -ErrorAction SilentlyContinue)) {
@@ -142,54 +147,21 @@ catch {
 }
 
 # -----------------------------------------------------------------------------
-# Execute T-SQL to create external user mapped to Managed Identity and grant roles (simplified idempotent)
+# Load and execute T-SQL to create external user mapped to Managed Identity and grant roles
 # -----------------------------------------------------------------------------
 
 $escapedIdentityName = $ManagedIdentityName -replace ']', ']]'
 
-$tsql = @"
--- Create external user if missing
-IF NOT EXISTS (SELECT 1 FROM sys.database_principals WHERE name = '$escapedIdentityName')
-BEGIN
-    PRINT 'Creating external user [$escapedIdentityName]';
-    CREATE USER [$escapedIdentityName] FROM EXTERNAL PROVIDER;
-END
-ELSE
-BEGIN
-    PRINT 'User [$escapedIdentityName] already exists – skipping create.';
-END
+# Load SQL script from file
+$roleAssignmentSqlPath = Join-Path $PSScriptRoot 'assign-database-roles.sql'
+if (-not (Test-Path $roleAssignmentSqlPath)) {
+    Write-Error "SQL script not found: $roleAssignmentSqlPath"
+    exit 1
+}
 
--- Grant roles only if not already a member
-IF NOT EXISTS (SELECT 1 FROM sys.database_role_members drm
-    JOIN sys.database_principals r ON drm.role_principal_id = r.principal_id
-    JOIN sys.database_principals u ON drm.member_principal_id = u.principal_id
-    WHERE r.name = 'db_datareader' AND u.name = '$escapedIdentityName')
-BEGIN
-    PRINT 'Adding user [$escapedIdentityName] to role db_datareader';
-    ALTER ROLE [db_datareader] ADD MEMBER [$escapedIdentityName];
-END
-ELSE PRINT 'User already in role db_datareader – skipping.';
-
-IF NOT EXISTS (SELECT 1 FROM sys.database_role_members drm
-    JOIN sys.database_principals r ON drm.role_principal_id = r.principal_id
-    JOIN sys.database_principals u ON drm.member_principal_id = u.principal_id
-    WHERE r.name = 'db_datawriter' AND u.name = '$escapedIdentityName')
-BEGIN
-    PRINT 'Adding user [$escapedIdentityName] to role db_datawriter';
-    ALTER ROLE [db_datawriter] ADD MEMBER [$escapedIdentityName];
-END
-ELSE PRINT 'User already in role db_datawriter – skipping.';
-
-IF NOT EXISTS (SELECT 1 FROM sys.database_role_members drm
-    JOIN sys.database_principals r ON drm.role_principal_id = r.principal_id
-    JOIN sys.database_principals u ON drm.member_principal_id = u.principal_id
-    WHERE r.name = 'db_ddladmin' AND u.name = '$escapedIdentityName')
-BEGIN
-    PRINT 'Adding user [$escapedIdentityName] to role db_ddladmin';
-    ALTER ROLE [db_ddladmin] ADD MEMBER [$escapedIdentityName];
-END
-ELSE PRINT 'User already in role db_ddladmin – skipping.';
-"@
+$tsql = Get-Content -Path $roleAssignmentSqlPath -Raw
+# Replace placeholder with actual identity name
+$tsql = $tsql -replace '\{\{IDENTITY_NAME\}\}', $escapedIdentityName
 
 Write-Output "Applying (idempotent) database role assignments for managed identity '$ManagedIdentityName' on database '$sqlDatabaseName'..."
 
@@ -213,35 +185,20 @@ try {
     Write-Output "Successfully ensured user and role memberships for '$ManagedIdentityName'."
 
     # ---------------------------------------------------------------------
-    # Create 'todo' table if it does not exist (idempotent)
-    # Note: Azure SQL does not yet have a native JSON column type; using NVARCHAR(MAX)
-    # with an ISJSON() CHECK constraint to approximate JSON enforcement.
+    # Load and execute SQL to create table(s)
     # ---------------------------------------------------------------------
-    $tableSql = @"
-IF NOT EXISTS (SELECT 1 FROM sys.tables t JOIN sys.schemas s ON t.schema_id = s.schema_id WHERE t.name = 'todo' AND s.name = 'dbo')
-BEGIN
-    PRINT 'Creating table dbo.todo';
-    CREATE TABLE dbo.todo (
-        id INT IDENTITY(1,1) PRIMARY KEY,
-        name NVARCHAR(100) NOT NULL,
-        recommendations_json NVARCHAR(MAX) NULL,
-        notes NVARCHAR(100) NULL,
-        priority INT NOT NULL CONSTRAINT DF_todo_priority DEFAULT(0),
-        completed BIT NOT NULL CONSTRAINT DF_todo_completed DEFAULT(0),
-        due_date NVARCHAR(50) NULL,
-        oid NVARCHAR(50) NULL,
-        CONSTRAINT CK_todo_recommendations_json_isjson CHECK (recommendations_json IS NULL OR ISJSON(recommendations_json)=1)
-    );
-END
-ELSE
-BEGIN
-    PRINT 'Table dbo.todo already exists – skipping create.';
-END
-"@
+    $createTableSqlPath = Join-Path $PSScriptRoot 'create-tables.sql'
+    if (-not (Test-Path $createTableSqlPath)) {
+        Write-Error "SQL script not found: $createTableSqlPath"
+        $conn.Close()
+        exit 1
+    }
+
+    $tableSql = Get-Content -Path $createTableSqlPath -Raw
     $cmd.CommandText = $tableSql
     $null = $cmd.ExecuteNonQuery()
     $conn.Close()
-    Write-Output "Created table dbo.todo."
+    Write-Output "Created tables."
 }
 catch {
     Write-Error "Failed to execute T-SQL for managed identity via ADO.NET: $($_.Exception.Message)"

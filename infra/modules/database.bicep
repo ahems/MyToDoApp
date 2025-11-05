@@ -1,15 +1,3 @@
-// -------------------------------------------------------------------------------------------------
-// Azure Verified Module adoption for Azure SQL Server + Database
-// Replaces inline SQL server & database resources with AVM module `avm/res/sql/server`.
-// Assumptions:
-//   - Using a pinned module version (update if newer stable desired).
-//   - Single database named 'todo' with a serverless General Purpose SKU GP_S_Gen5_4.
-//   - Retains permissive firewall rule (not recommended for production) to match previous behavior.
-//   - Maintains Key Vault secrets expected by the rest of the application.
-// TODO (future hardening): Parameterize firewall, SKU, autoPauseDelay, licenseType, and consider
-//       replacing AllowAll rule with restricted IP ranges or private endpoints.
-// -------------------------------------------------------------------------------------------------
-
 param keyVaultName string = 'todoapp-kv-${uniqueString(resourceGroup().id)}'
 param sqlServerName string = 'todoapp-sql-${toLower(uniqueString(resourceGroup().id))}'
 param location string = resourceGroup().location
@@ -18,6 +6,7 @@ param aadAdminObjectId string
 param tenantId string = subscription().tenantId
 param identityName string = 'todoapp-identity-${uniqueString(resourceGroup().id)}'
 param useFreeLimit bool
+param sqlDatabaseName string
 
 // Existing user-assigned identity & Key Vault
 resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
@@ -27,8 +16,6 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
 }
 
-// Database naming & connection string pieces
-var sqlDatabaseName = 'todo'
 // Using deterministic FQDN pattern rather than module output to keep secret name stable.
 var sqlServerFqdn = '${sqlServerName}${environment().suffixes.sqlServerHostname}'
 
