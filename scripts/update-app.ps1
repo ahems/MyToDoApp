@@ -66,8 +66,15 @@ $app = Get-AzADApplication -DisplayName $appName -ErrorAction Stop
 if ($app) {
     Write-Output "Application $appName found. Updating the Azure AD Application Registration..."
 
-    # Update reply URLs (redirect URIs) using Az module
+    # Extract base URL from redirect URL (remove /getAToken)
+    $baseUrl = $redirectUrl -replace '/getAToken$', ''
+    
+    # Update reply URLs (redirect URIs) and logout URL using Az module
     Set-AzADApplication -ObjectId $app.Id -ReplyUrls @("$redirectUrl/getAToken", "http://localhost:5000/getAToken") | Out-Null
+    
+    # Update logout URL
+    Write-Output "Setting logout redirect URI to: $baseUrl"
+    Update-AzADApplication -ObjectId $app.Id -Web @{ LogoutUrl = $baseUrl } | Out-Null
 
 } else {
     Write-Error "Application not found. Please run the create-app-and-secret.ps1 script to create the Azure AD Application Registration."

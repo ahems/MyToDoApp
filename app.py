@@ -265,26 +265,6 @@ def _get_api_access_token() -> str:
         _api_token_cache["value"] = access_token
         _api_token_cache["exp"] = now + expires_in
         logger.debug("[api-token] acquired app token; expires_in=%s scope=%s", expires_in, API_APP_SCOPE)
-        
-        # DEBUG: Decode token to see actual claims
-        try:
-            import base64
-            import json
-            token_parts = access_token.split('.')
-            if len(token_parts) >= 2:
-                # Add padding if needed
-                payload = token_parts[1]
-                payload += '=' * (4 - len(payload) % 4)
-                decoded = base64.b64decode(payload)
-                claims = json.loads(decoded)
-                logger.info("[api-token] DEBUG: Token audience (aud) = %s", claims.get("aud"))
-                logger.info("[api-token] DEBUG: Token issuer (iss) = %s", claims.get("iss"))
-                logger.info("[api-token] DEBUG: Token app_id (appid) = %s", claims.get("appid"))
-                logger.info("[api-token] DEBUG: Token roles = %s", claims.get("roles"))
-                logger.info("[api-token] DEBUG: Token scp = %s", claims.get("scp"))
-        except Exception as e:
-            logger.warning("[api-token] Failed to decode token for debugging: %s", e)
-        
         return access_token
 
 # Lightweight startup probe endpoint: returns 200 only when a Managed Identity token can be acquired
