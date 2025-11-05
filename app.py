@@ -250,18 +250,41 @@ def _get_api_access_token() -> str:
         cached_token = _api_token_cache.get("value")
         cached_exp = _api_token_cache.get("exp", 0)
         if cached_token and now < (cached_exp - 60):
+            logger.debug("[api-token] using cached token")
             return cached_token
 
+        logger.debug("[api-token] acquiring new token for scope: %s", API_APP_SCOPE)
         result = _api_client_app.acquire_token_for_client(scopes=[API_APP_SCOPE])
         access_token = result.get("access_token")
         if not access_token:
             error_detail = result.get("error_description") or result.get("error") or "unknown error"
+            logger.error("[api-token] token acquisition failed: %s", error_detail)
             raise RuntimeError(f"Failed to acquire API access token: {error_detail}")
 
         expires_in = int(result.get("expires_in", 300))
         _api_token_cache["value"] = access_token
         _api_token_cache["exp"] = now + expires_in
-        logger.debug("[api-token] acquired app token; expires_in=%s", expires_in)
+        logger.debug("[api-token] acquired app token; expires_in=%s scope=%s", expires_in, API_APP_SCOPE)
+        
+        # DEBUG: Decode token to see actual claims
+        try:
+            import base64
+            import json
+            token_parts = access_token.split('.')
+            if len(token_parts) >= 2:
+                # Add padding if needed
+                payload = token_parts[1]
+                payload += '=' * (4 - len(payload) % 4)
+                decoded = base64.b64decode(payload)
+                claims = json.loads(decoded)
+                logger.info("[api-token] DEBUG: Token audience (aud) = %s", claims.get("aud"))
+                logger.info("[api-token] DEBUG: Token issuer (iss) = %s", claims.get("iss"))
+                logger.info("[api-token] DEBUG: Token app_id (appid) = %s", claims.get("appid"))
+                logger.info("[api-token] DEBUG: Token roles = %s", claims.get("roles"))
+                logger.info("[api-token] DEBUG: Token scp = %s", claims.get("scp"))
+        except Exception as e:
+            logger.warning("[api-token] Failed to decode token for debugging: %s", e)
+        
         return access_token
 
 # Lightweight startup probe endpoint: returns 200 only when a Managed Identity token can be acquired
@@ -652,7 +675,11 @@ def add_todo():
     if response.status_code == 200:
         return redirect(url_for('index'))
     else:
-        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        try:
+            error_data = response.json()
+            error_message = error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+        except (ValueError, KeyError, IndexError):
+            error_message = f"API error (status {response.status_code}): {response.text[:200]}"
         logger.error('Add TODO error: %s', error_message)
         return f'An error occurred: {error_message}', 500
 

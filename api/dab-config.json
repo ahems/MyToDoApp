@@ -21,7 +21,7 @@
         "provider": "AzureAD",
         "jwt": {
           "audience": "@env('API_APP_ID_URI')",
-          "issuer": "https://login.microsoftonline.com/@env('TENANT_ID')/v2.0"
+          "issuer": "https://sts.windows.net/@env('TENANT_ID')/"
         }
       }
     },

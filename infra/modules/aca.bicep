@@ -180,6 +180,10 @@ resource frontEnd 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'API_URL'
               value: 'https://${middleTier.properties.configuration.ingress.fqdn}/graphql/'
             }
+            {
+              name: 'API_APP_ID_URI'
+              value: apiAppIdUri
+            }
           ]
         }
       ]
@@ -273,6 +277,10 @@ resource middleTier 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'API_APP_ID_URI'
               value: apiAppIdUri
+            }
+            {
+              name: 'API_APP_ID'
+              value: split(apiAppIdUri, '/')[2]
             }
             {
               name: 'TENANT_ID'
