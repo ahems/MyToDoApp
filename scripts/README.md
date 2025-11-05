@@ -18,7 +18,7 @@ When you run `azd up` or other `azd` commands, these scripts execute in the foll
 
 **Execution Phase:** Before `azd provision` (pre-infrastructure deployment)
 
-**Purpose:** Prepares the Azure environment by creating Azure AD app registrations and discovering available Azure OpenAI models with quota.
+**Purpose:** Prepares the Azure environment by creating Azure AD app registrations and discovering available Azure AI Foundry models with quota.
 
 ### What it does
 
@@ -34,7 +34,7 @@ When you run `azd up` or other `azd` commands, these scripts execute in the foll
   - Assigns the web app service principal to the API app role
   - Enables web-to-API authentication via client credentials flow
 
-**Azure OpenAI Model Discovery:**
+**Azure AI Foundry Model Discovery:**
 
 - Enumerates all available models in the Azure AI Services account
 - Retrieves quota availability for each model in the deployment region
@@ -53,7 +53,7 @@ When you run `azd up` or other `azd` commands, these scripts execute in the foll
 **Azure AI Services Account Creation:**
 
 - Creates Azure AI Services (Cognitive Services) account if it doesn't exist
-  - Account type: `AIServices` (includes Azure OpenAI and other AI services)
+  - Account type: `AIServices` (includes Azure AI Foundry and other AI services)
   - SKU: `S0` (Standard tier)
   - Custom subdomain configured for API access
   - Derives unique account name if not specified (format: `todoapp-openai-<hash>`)
@@ -96,7 +96,7 @@ When you run `azd up` or other `azd` commands, these scripts execute in the foll
 | `availableEmbeddingDeploymentCapacity` | Available quota for embedding model |
 | `AZURE_LOCATION` | Deployment region (default: eastus2) |
 | `AZURE_RESOURCE_GROUP` | Resource group name (derived if missing) |
-| `AZURE_OPENAI_ACCOUNT_NAME` | Azure OpenAI account name |
+| `AZURE_OPENAI_ACCOUNT_NAME` | Azure AI Foundry account name |
 | `NAME` | Current user email/account |
 | `OBJECT_ID` | Current user principal ID |
 | `SQL_DATABASE_NAME` | Name of the Database (default: todo) |
@@ -562,7 +562,7 @@ Update-AzADApplication -ObjectId $app.Id -SignInAudience 'AzureADMultipleOrgs'
 
 - **Az.Accounts** (>= 2.12.0) - Azure authentication and context
 - **Az.Resources** - Azure AD app registration management
-- **Az.CognitiveServices** - Azure OpenAI account operations
+- **Az.CognitiveServices** - Azure AI Foundry account operations
 
 ### External Tools
 
@@ -602,5 +602,5 @@ Update-AzADApplication -ObjectId $app.Id -SignInAudience 'AzureADMultipleOrgs'
 
 - [Azure Developer CLI Documentation](https://learn.microsoft.com/azure/developer/azure-developer-cli/)
 - [Azure AD App Registrations](https://learn.microsoft.com/azure/active-directory/develop/quickstart-register-app)
-- [Azure OpenAI Quota Management](https://learn.microsoft.com/azure/ai-services/openai/quotas-limits)
+- [Azure AI Foundry Quota Management](https://learn.microsoft.com/azure/ai-services/openai/quotas-limits)
 - [PowerShell Az Module](https://learn.microsoft.com/powershell/azure/)

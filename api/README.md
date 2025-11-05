@@ -140,9 +140,10 @@ If `IDENTITY_ENDPOINT` is not set (e.g., running locally), the wait logic is ski
 
 **CORS:**
 
-- Currently configured with empty origins array (no CORS restrictions)
-- `allow-credentials` set to `false`
-- Can be customized for specific frontend domains
+- Configured to accept requests only from the deployed frontend application
+- Uses `@env('APP_URL')` environment variable to dynamically restrict origins
+- `allow-credentials` set to `true` to support authenticated requests with cookies
+- The `APP_URL` is set during post-deployment by the [`postdeploy.ps1`](../scripts/README.md#3-postdeployps1) script
 
 **Authentication:**
 
@@ -217,6 +218,7 @@ The API service requires the following environment variables to be set by `azd` 
 | `TENANT_ID` | Azure AD tenant ID | [`preup.ps1`](../scripts/README.md#1-preupps1) script |
 | `APPLICATIONINSIGHTS_CONNECTION_STRING` | Application Insights connection string | azd (from [infra outputs](../infra/README.md)) |
 | `AZURE_CLIENT_ID` | User-assigned managed identity client ID | azd (from [infra outputs](../infra/README.md)) |
+| `APP_URL` | Frontend application URL for CORS restrictions | [`postdeploy.ps1`](../scripts/README.md#3-postdeployps1) script |
 
 ## Database Permissions
 

@@ -25,7 +25,7 @@ The frontend web application is a Python Flask application that:
 
 - **Authenticates users** via Azure Active Directory (Entra ID)
 - **Manages to-do items** through GraphQL queries/mutations to the backend API
-- **Generates AI recommendations** using Azure OpenAI for task completion assistance
+- **Generates AI recommendations** using Azure AI Foundry for task completion assistance
 - **Stores session data** in Azure Redis Cache using Entra ID authentication
 - **Monitors telemetry** through Azure Application Insights
 - **Runs in Azure Container Apps** with managed identity for secure, passwordless authentication
@@ -33,7 +33,7 @@ The frontend web application is a Python Flask application that:
 ### Key Features
 
 - ✅ **Zero-trust security**: Managed identity authentication for all Azure services
-- ✅ **AI-powered recommendations**: Integrated Azure OpenAI for task suggestions
+- ✅ **AI-powered recommendations**: Integrated Azure AI Foundry for task suggestions
 - ✅ **Responsive UI**: Bootstrap 5-based interface with dynamic content
 - ✅ **Session management**: Redis-backed sessions with automatic token refresh
 - ✅ **Comprehensive logging**: OpenTelemetry integration with Application Insights
@@ -75,7 +75,7 @@ The frontend communicates with:
 - **Data API Builder**: For CRUD operations on to-do items (see [API Documentation](../api/README.md))
 - **Azure Redis Cache**: For session storage with Entra ID authentication
 - **Azure Key Vault**: For secure credential storage (client secrets, connection strings)
-- **Azure OpenAI**: For generating task recommendations
+- **Azure AI Foundry**: For generating task recommendations
 - **Application Insights**: For telemetry and monitoring
 
 Infrastructure details: [Infrastructure Documentation](../infra/README.md)
@@ -91,7 +91,7 @@ app/
 ├── requirements.txt            # Python dependencies
 ├── context_processors.py       # Flask template context injection (current date)
 ├── priority.py                 # Priority enumeration (HIGH, MEDIUM, LOW)
-├── recommendation_engine.py    # Azure OpenAI integration for AI recommendations
+├── recommendation_engine.py    # Azure AI Foundry integration for AI recommendations
 ├── services.py                 # Service enumeration (OpenAI, AzureOpenAI)
 ├── tab.py                      # Tab state enumeration (DETAILS, EDIT, RECOMMENDATIONS)
 ├── README.md                   # This documentation
@@ -261,7 +261,7 @@ app/
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| `openai` | Latest | Azure OpenAI SDK for AI recommendations |
+| `openai` | Latest | Azure AI Foundry SDK for AI recommendations |
 | `flask` | Latest | Web framework core |
 | `flask[async]` | Latest | Async route support for `/recommend` |
 | `azure-keyvault-secrets` | Latest | Key Vault secret retrieval |
@@ -288,7 +288,7 @@ pip install --no-cache-dir -r requirements.txt
 
 ### `recommendation_engine.py`
 
-**Purpose**: Azure OpenAI integration for generating AI-powered task recommendations.
+**Purpose**: Azure AI Foundry integration for generating AI-powered task recommendations.
 
 **Class**: `RecommendationEngine`
 
@@ -299,7 +299,7 @@ pip install --no-cache-dir -r requirements.txt
 
 **Token Management**:
 
-- Acquires Entra ID tokens for Azure OpenAI scope: `https://cognitiveservices.azure.com/.default`
+- Acquires Entra ID tokens for Azure AI Foundry scope: `https://cognitiveservices.azure.com/.default`
 - Automatic token refresh when expiry approaches (120-second buffer)
 - Token caching to minimize authentication requests
 
@@ -435,7 +435,7 @@ session["selectedTab"] = Tab.RECOMMENDATIONS
 **Values**:
 
 - `OpenAI = "openai"`: Direct OpenAI API
-- `AzureOpenAI = "azureopenai"`: Azure OpenAI Service
+- `AzureOpenAI = "azureopenai"`: Azure AI Foundry Service
 
 **Note**: Current implementation uses only `AzureOpenAI`. This enum provides extensibility for future OpenAI API support.
 
@@ -615,8 +615,8 @@ When `KEY_VAULT_NAME` is configured, the application retrieves:
 - `CLIENTID`: Web app Azure AD application client ID
 - `CLIENTSECRET`: Web app Azure AD application client secret
 - `REDIRECT-URI`: OAuth2 redirect URI (e.g., `https://.../getAToken`)
-- `AZUREOPENAIDEPLOYMENTNAME`: Azure OpenAI deployment name (e.g., `gpt-4o-mini`)
-- `AZUREOPENAIENDPOINT`: Azure OpenAI endpoint URL
+- `AZUREOPENAIDEPLOYMENTNAME`: Azure AI Foundry deployment name (e.g., `gpt-4o-mini`)
+- `AZUREOPENAIENDPOINT`: Azure AI Foundry endpoint URL
 
 **Access**: Requires managed identity with Key Vault Secrets User role.
 
@@ -934,7 +934,7 @@ When `IS_LOCALHOST=true`:
 - Ensure Azure CLI user has "Redis Cache Contributor" role on Redis Cache
 - Verify `REDIS_CONNECTION_STRING` format is correct (Entra ID format)
 
-#### 4. Azure OpenAI authentication fails
+#### 4. Azure AI Foundry authentication fails
 
 - Ensure Azure CLI user has "Cognitive Services User" role on AI Services resource
 - Verify `AZUREOPENAIDEPLOYMENTNAME` and `AZUREOPENAIENDPOINT` in Key Vault
@@ -972,7 +972,7 @@ When `IS_LOCALHOST=true`:
 
 - [Flask Documentation](https://flask.palletsprojects.com/)
 - [Azure Identity SDK for Python](https://learn.microsoft.com/python/api/overview/azure/identity-readme)
-- [Azure OpenAI Service](https://learn.microsoft.com/azure/ai-services/openai/)
+- [Azure AI Foundry Service](https://learn.microsoft.com/azure/ai-services/openai/)
 - [Azure Redis Cache with Entra ID](https://learn.microsoft.com/azure/azure-cache-for-redis/cache-azure-active-directory-for-authentication)
 - [Azure Container Apps](https://learn.microsoft.com/azure/container-apps/)
 - [Microsoft Authentication Library (MSAL) for Python](https://learn.microsoft.com/azure/active-directory/develop/msal-overview)
@@ -1026,7 +1026,7 @@ The application uses **User-Assigned Managed Identity** (specified via `AZURE_CL
 |---------|----------------------|----------------|---------|
 | **Azure Key Vault** | Managed Identity | `DefaultAzureCredential` | Retrieves secrets (OAuth client secret, redirect URI) |
 | **Azure Redis Cache** | Entra ID (via MI) | `redis-entraid` library with `IdentityProvider` | Session storage with token-based authentication |
-| **Azure OpenAI** | Entra ID Token (via MI) | `DefaultAzureCredential` → `get_token()` for scope `https://cognitiveservices.azure.com/.default` | AI recommendations with bearer token auth |
+| **Azure AI Foundry** | Entra ID Token (via MI) | `DefaultAzureCredential` → `get_token()` for scope `https://cognitiveservices.azure.com/.default` | AI recommendations with bearer token auth |
 | **Application Insights** | Entra ID (via MI) | `configure_azure_monitor(credential=managed_identity_credential)` | Telemetry and monitoring with managed identity |
 
 **Implementation Details**:
@@ -1044,7 +1044,7 @@ redis_client = redis.Redis.from_url(
     credential_provider=IdentityProvider(credential=managed_identity_credential)
 )
 
-# Azure OpenAI token acquisition
+# Azure AI Foundry token acquisition
 openai_token = managed_identity_credential.get_token("https://cognitiveservices.azure.com/.default")
 
 # Application Insights telemetry
@@ -1066,7 +1066,7 @@ configure_azure_monitor(
 
 - `Key Vault Secrets User` on Key Vault
 - `Redis Cache Contributor` or custom role with `Microsoft.Cache/redis/accessKeys/read` on Redis
-- `Cognitive Services OpenAI User` on Azure OpenAI service
+- `Cognitive Services OpenAI User` on Azure AI Foundry service
 - `Monitoring Metrics Publisher` on Application Insights (automatically granted)
 
 ### User Data Isolation

@@ -1,4 +1,56 @@
-# Deploying the ToDo App To Azure
+# ToDo App Sample
+
+## Overview
+
+MyToDoApp is a modern, cloud-native task management application that demonstrates enterprise-grade Azure development patterns with AI integration. This sample showcases a complete full-stack application built with Flask (frontend), Data API Builder (backend API), Azure SQL Database, and Azure AI Foundry, all deployed using Azure Developer CLI (azd) with Infrastructure as Code (Bicep).
+
+### Key Features
+
+- **🔐 Zero-Trust Security**: All Azure services use Azure Entra ID (Azure AD) authentication with managed identities for passwordless, secure connections
+- **🤖 AI-Powered Recommendations**: Integrated Azure AI Foundry provides intelligent task completion suggestions and priority recommendations
+- **🧠 Intelligent Model Selection**: Automated discovery of optimal OpenAI models based on availability and quota in the deployment region at deploy-time, with preference for cost-effective mini/small models
+- **📊 Modern API Architecture**: REST and GraphQL endpoints via Microsoft Data API Builder (DAB) for flexible data access, secured using Entra ID
+- **🔄 Session Management**: Redis-backed sessions with automatic token refresh and secure credential storage
+- **📈 Comprehensive Monitoring**: OpenTelemetry integration with Application Insights for telemetry, logging, and performance tracking
+- **🚀 Serverless Deployment**: Runs on Azure Container Apps for automatic scaling and high availability
+- **👥 User Data Isolation**: Row-level security ensures users can only access their own tasks
+
+### Architecture
+
+The application consists of:
+
+- **Frontend Web App**: Flask application with Bootstrap UI, Azure AD authentication, and AI recommendations
+- **Backend API**: Data API Builder providing REST/GraphQL endpoints with JWT authentication
+- **Database**: Azure SQL Database with Entra ID authentication and row-level security
+- **AI Services**: Azure AI Foundry for intelligent task suggestions with managed identity authentication
+- **Session Storage**: Azure Cache for Redis with managed identity authentication
+- **Monitoring**: Application Insights and Log Analytics workspace with managed identity authentication
+
+### End-to-End Entra ID Authentication
+
+This sample demonstrates a comprehensive zero-trust security model using Azure Entra ID (Azure AD) authentication at every layer:
+
+- **User → Frontend App**: Users authenticate via Azure AD OAuth 2.0 with PKCE flow, receiving JWT tokens for secure session management
+- **Frontend App → Backend API**: The web app uses client credentials flow (app-to-app authentication) with Azure AD to obtain access tokens for API calls from Data API Builder
+- **Backend API → Database**: Data API Builder uses a user managed identity to authenticate to Azure SQL Database, eliminating connection strings and passwords
+- **Frontend App → Azure Services**: The Flask application uses managed identity credentials to authenticate to:
+  - **Redis Cache**: Passwordless authentication for session storage
+  - **Azure AI Foundry**: Token-based access for AI recommendations
+  - **Application Insights**: Secure telemetry publishing
+  - **Key Vault**: Retrieving secrets without hardcoded credentials
+
+All authentication flows are configured automatically during deployment, demonstrating enterprise best practices for secure, passwordless cloud applications.
+
+### Deployment with Azure Developer CLI (azd)
+
+This application is designed for one-command deployment using Azure Developer CLI:
+
+1. **Pre-Deployment** (`preup.ps1`): Automatically creates Azure AD app registrations, discovers available OpenAI models with quota, and configures authentication settings
+2. **Infrastructure Provisioning** (`azd provision`): Deploys all Azure resources using Bicep templates with intelligent model selection and capacity calculation
+3. **Application Deployment** (`azd deploy`): Builds and deploys containerized applications to Azure Container Apps with remote build in Azure Container Registry
+4. **Post-Deployment** (`postdeploy.ps1`): Configures redirect URIs and sets runtime environment variables for CORS security
+
+All deployment automation is handled through PowerShell scripts executed by azd lifecycle hooks, making the entire process seamless and repeatable.
 
 ## Deployment from Visual Studio Code using Code Spaces
 
@@ -23,7 +75,7 @@ Use the terminal in Visual Studio Code to do these steps. From the top menu, sel
    ```shell
    azd env new
    ```
-   
+
    You will be asked for the name of the environment, which will also be used as the resource group name created by default in eastus2. "rg-" will automatically be prepended to the name so enter something like "adamhems-todoapp" for example.
 
 2. (Optional) Set Environment Variables:
@@ -44,7 +96,7 @@ Use the terminal in Visual Studio Code to do these steps. From the top menu, sel
 
    ```shell
    azd env set AZURE_LOCATION westus
-   ```   
+   ```
 
 3. Provision Infrastructure
 
@@ -65,3 +117,12 @@ Use the terminal in Visual Studio Code to do these steps. From the top menu, sel
    ```shell
    azd down --force --purge
    ```
+
+## Project Documentation
+
+This repository contains detailed documentation for each component of the MyToDoApp application:
+
+- **[App Documentation](app/README.md)** - Frontend web application built with Flask, including authentication flow, AI-powered recommendations, session management, and integration with Azure services using managed identity
+- **[API Documentation](api/README.md)** - Backend API service using Microsoft Data API Builder (DAB), providing REST and GraphQL endpoints with Azure AD authentication and managed identity database access
+- **[Infrastructure Documentation](infra/README.md)** - Infrastructure as Code (IaC) using Azure Bicep templates, including architecture overview, module descriptions, and deployment configuration for all Azure resources
+- **[Scripts Documentation](scripts/README.md)** - PowerShell automation scripts for the Azure Developer CLI (azd) deployment lifecycle, including pre-deployment setup, post-provisioning configuration, and teardown procedures

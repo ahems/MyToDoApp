@@ -1,6 +1,6 @@
 # Infrastructure Documentation
 
-This directory contains the Infrastructure as Code (IaC) for the MyToDoApp application using Azure Bicep templates. The infrastructure deploys a modern, cloud-native todo application with Azure Entra ID (Azure AD) authentication, Azure OpenAI integration, and a serverless architecture.
+This directory contains the Infrastructure as Code (IaC) for the MyToDoApp application using Azure Bicep templates. The infrastructure deploys a modern, cloud-native todo application with Azure Entra ID (Azure AD) authentication, Azure AI Foundry integration, and a serverless architecture.
 
 ## Prerequisites
 
@@ -8,7 +8,7 @@ Before deploying this infrastructure, the [`preup.ps1`](../scripts/README.md#1-p
 
 - Creates Azure AD app registrations for web and API authentication
 - Creates the Azure AI Services account
-- Discovers available Azure OpenAI models and quota in the target region
+- Discovers available Azure AI Foundry models and quota in the target region
 - Sets environment variables that the Bicep templates consume
 
 The Bicep templates then use these environment variables to deploy model deployments and configure authentication settings. For detailed information about the pre-deployment preparation, see the [Scripts Documentation](../scripts/README.md).
@@ -20,7 +20,7 @@ The application consists of:
 - **Frontend Web App**: Flask application with user authentication and UI
 - **Backend API**: Data API Builder (DAB) providing REST/GraphQL endpoints (see [API Documentation](../api/README.md))
 - **Database**: Azure SQL Database with Entra ID authentication
-- **AI Services**: Azure OpenAI for intelligent recommendations
+- **AI Services**: Azure AI Foundry for intelligent recommendations
 - **Session Storage**: Azure Cache for Redis with Entra ID authentication
 - **Monitoring**: Application Insights and Log Analytics
 
@@ -66,10 +66,10 @@ This file contains all the configurable parameters used by `main.bicep`. The Azu
 | `webAppClientSecret` | `CLIENT_SECRET` | Client secret for the web app registration |
 | `webAppClientId` | `CLIENT_ID` | Application ID of the web app registration |
 | `apiAppIdUri` | `API_APP_ID_URI` | Application ID URI for the API (format: `api://<guid>`) |
-| `cognitiveservicesname` | `AZURE_OPENAI_ACCOUNT_NAME` | Name for the Azure OpenAI account |
+| `cognitiveservicesname` | `AZURE_OPENAI_ACCOUNT_NAME` | Name for the Azure AI Foundry account |
 | `cognitiveservicesLocation` | `AZURE_LOCATION` | Azure region for deployments |
 
-#### Azure OpenAI Chat Model Parameters
+#### Azure AI Foundry Chat Model Parameters
 
 These parameters are automatically discovered and set by the [`preup.ps1`](../scripts/README.md#1-preupps1) script based on available quota in the target region:
 
@@ -80,7 +80,7 @@ These parameters are automatically discovered and set by the [`preup.ps1`](../sc
 | `chatGptModelName` | `chatGptModelName` | Model name (e.g., "gpt-35-turbo", "gpt-4") - prefers "mini" models |
 | `availableChatGptDeploymentCapacity` | `availableChatGptDeploymentCapacity` | Available capacity in tokens per minute (TPM) |
 
-#### Azure OpenAI Embedding Model Parameters
+#### Azure AI Foundry Embedding Model Parameters
 
 These parameters are automatically discovered and set by the [`preup.ps1`](../scripts/README.md#1-preupps1) script:
 
@@ -95,7 +95,7 @@ These parameters are automatically discovered and set by the [`preup.ps1`](../sc
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `restoreOpenAi` | `false` | Set to `true` to restore a soft-deleted Azure OpenAI account |
+| `restoreOpenAi` | `false` | Set to `true` to restore a soft-deleted Azure AI Foundry account |
 | `useFreeLimit` | `false` | Set to `true` to use Azure SQL Database free tier |
 
 **Note:** The azd CLI automatically reads these values from your `.azure/<env-name>/.env` file during deployment. The `${VARIABLE}` syntax in the JSON is replaced with actual values at deployment time.
@@ -262,7 +262,7 @@ Server=tcp:<server>.database.windows.net,1433;Initial Catalog=todo;Authenticatio
 
 ### `modules/aiservices.bicep`
 
-Deploys Azure AI Services (Azure OpenAI) with chat and embedding model deployments.
+Deploys Azure AI Services (Azure AI Foundry) with chat and embedding model deployments.
 
 **Prerequisites:**
 
@@ -447,7 +447,7 @@ When you run `azd up` or `azd deploy`, the following happens:
 1. **Pre-deployment** ([`preup.ps1`](../scripts/README.md#1-preupps1)):
    - Creates Azure AD app registrations (web app and API)
    - Creates Azure AI Services account
-   - Discovers available Azure OpenAI models and quota
+   - Discovers available Azure AI Foundry models and quota
    - Selects optimal chat and embedding models (prefers "mini" and "small" models)
    - Stores configuration in azd environment
 
@@ -594,7 +594,7 @@ Approximate monthly costs (pay-as-you-go, US West region):
 | Azure SQL Database | Serverless GP_S_Gen5_4 | $150 (with auto-pause) |
 | Azure Cache for Redis | Basic C0 (250MB) | $16 |
 | Azure Container Apps | 0.5 vCPU, 1GB RAM | $30 (3 replicas) |
-| Azure OpenAI | Standard, 100K tokens | $10 |
+| Azure AI Foundry | Standard, 100K tokens | $10 |
 | Application Insights | 1GB/day | $2 |
 | Key Vault | Standard | $1 |
 | Container Registry | Basic | $5 |
@@ -632,5 +632,5 @@ Approximate monthly costs (pay-as-you-go, US West region):
 - [Azure Bicep Documentation](https://learn.microsoft.com/azure/azure-resource-manager/bicep/)
 - [Azure Container Apps Documentation](https://learn.microsoft.com/azure/container-apps/)
 - [Azure SQL Database with Entra ID](https://learn.microsoft.com/azure/azure-sql/database/authentication-aad-overview)
-- [Azure OpenAI Service](https://learn.microsoft.com/azure/ai-services/openai/)
+- [Azure AI Foundry Service](https://learn.microsoft.com/azure/ai-services/openai/)
 - [Data API Builder](https://github.com/Azure/data-api-builder)

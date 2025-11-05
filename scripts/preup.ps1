@@ -326,7 +326,7 @@ function Ensure-ApiAppRegistration {
 }
 
 #############################################
-# Azure OpenAI Account + Model Selection
+# Azure AI Foundry Account + Model Selection
 #############################################
 # Minimal model (only fields we actually use)
 class Model { [string]$format; [string]$name; [string]$version }
@@ -337,7 +337,7 @@ function Ensure-OpenAIAccount {
 	if ([string]::IsNullOrWhiteSpace($Acct)) { throw 'Ensure-OpenAIAccount received an empty account name.' }
 	$existingAcct = Get-AzCognitiveServicesAccount -Name $Acct -ResourceGroupName $Rg -ErrorAction SilentlyContinue
 	if (-not $existingAcct) {
-		Write-Host "Creating Azure OpenAI account '$Acct' in $Loc..." -ForegroundColor Green
+		Write-Host "Creating Azure AI Foundry account '$Acct' in $Loc..." -ForegroundColor Green
 		New-AzCognitiveServicesAccount -ResourceGroupName $Rg -Name $Acct -Type 'AIServices' -SkuName 'S0' -Location $Loc -CustomSubDomainName $Acct -Force | Out-Null
 	} elseif ($existingAcct.Location -ne $Loc) {
 		Write-Warning "Existing account region '$($existingAcct.Location)' differs from requested '$Loc'; proceeding with existing region."
@@ -496,7 +496,7 @@ $webClientId = Get-AzdValue -Name 'CLIENT_ID'
 if (-not $webClientId) { throw 'CLIENT_ID is missing after web app registration; cannot configure API registration.' }
 Ensure-ApiAppRegistration -ApiAppDisplayName $apiAppDisplayName -WebAppClientId $webClientId
 
-# 2. Azure OpenAI provisioning + model selection (skip if already fully selected)
+# 2. Azure AI Foundry provisioning + model selection (skip if already fully selected)
 $existingChatComplete = (Get-AzdValue -Name 'chatGptDeploymentVersion') -and (Get-AzdValue -Name 'chatGptSkuName') -and (Get-AzdValue -Name 'chatGptModelName') -and (Get-AzdValue -Name 'availableChatGptDeploymentCapacity')
 $existingEmbComplete  = (Get-AzdValue -Name 'embeddingDeploymentVersion') -and (Get-AzdValue -Name 'embeddingDeploymentSkuName') -and (Get-AzdValue -Name 'embeddingDeploymentModelName') -and (Get-AzdValue -Name 'availableEmbeddingDeploymentCapacity')
 
@@ -554,7 +554,7 @@ if (-not $accountName) {
 	$hash = ([System.BitConverter]::ToString((New-Guid).ToByteArray()) -replace '-','').Substring(0,8).ToLower()
 	$accountName = "todoapp-openai-$hash"
 	Set-AzdValue -Name 'AZURE_OPENAI_ACCOUNT_NAME' -Value $accountName
-	Write-Host "Derived Azure OpenAI account name: $accountName" -ForegroundColor Cyan
+	Write-Host "Derived Azure AI Foundry account name: $accountName" -ForegroundColor Cyan
 }
 
 Ensure-OpenAIAccount -SubId $subscriptionId -Rg $resourceGroup -Acct $accountName -Loc $location
@@ -562,7 +562,7 @@ Ensure-OpenAIAccount -SubId $subscriptionId -Rg $resourceGroup -Acct $accountNam
 Write-Host "Enumerating models for account '$accountName' in region '$location'..." -ForegroundColor Cyan
 $null = if (-not $subscriptionId) { throw 'Subscription id is missing; cannot enumerate models. Ensure you are logged in (Connect-AzAccount) and that a subscription is selected (Set-AzContext).' }
 $models = Get-AccountModelsMultiVersion -SubId $subscriptionId -Rg $resourceGroup -Acct $accountName
-if (-not $models -or $models.Count -eq 0) { throw 'No models returned from Azure OpenAI account; aborting preup hook.' }
+if (-not $models -or $models.Count -eq 0) { throw 'No models returned from Azure AI Foundry account; aborting preup hook.' }
 
 # Filter to OpenAI models only (other provider models cause quota retrieval warnings due to ValidateSet('OpenAI'))
 $originalModelCount = $models.Count

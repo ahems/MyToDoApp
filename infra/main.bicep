@@ -200,7 +200,7 @@ module containerApp 'modules/aca.bicep' = {
   ]
 }
 
-output APP_REDIRECT_URI string = containerApp!.outputs.APP_REDIRECT_URI
+output APP_REDIRECT_URI string = containerApp.outputs.APP_REDIRECT_URI
 
 // Expose values needed for local debugging / .env population
 // Key Vault name (already determined as a param -> output for azd env injection)

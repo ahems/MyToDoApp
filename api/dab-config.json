@@ -15,8 +15,8 @@
     "host": {
       "port": 5000,
       "cors": {
-        "origins": [],
-        "allow-credentials": false
+        "origins": ["@env('APP_URL')"],
+        "allow-credentials": true
       },
       "authentication": {
         "provider": "AzureAD",

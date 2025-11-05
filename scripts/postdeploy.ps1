@@ -79,3 +79,53 @@ if ($app) {
 } else {
     Write-Error "Application not found. Please run the create-app-and-secret.ps1 script to create the Azure AD Application Registration."
 }
+
+# Update API Container App with APP_URL environment variable
+Write-Output "Updating API Container App with APP_URL environment variable..."
+
+# Get the API service name from azd environment
+$apiServiceName = azd env get-value 'SERVICE_API_NAME'
+$resourceGroupName = azd env get-value 'AZURE_RESOURCE_GROUP'
+
+if ($apiServiceName -and $resourceGroupName) {
+    Write-Output "API Service Name: $apiServiceName"
+    Write-Output "Resource Group: $resourceGroupName"
+    
+    # Install Az.App module if not already installed (for Container Apps)
+    if (-not (Get-Module -ListAvailable -Name Az.App)) {
+        Write-Output "Installing Az.App module..."
+        Install-Module Az.App -Scope CurrentUser -Force -Confirm:$false
+    }
+    
+    Import-Module Az.App -ErrorAction Stop
+    
+    # Get the Container App
+    $containerApp = Get-AzContainerApp -ResourceGroupName $resourceGroupName -Name $apiServiceName -ErrorAction SilentlyContinue
+    
+    if ($containerApp) {
+        Write-Output "Found API Container App: $apiServiceName"
+        
+        # Extract base URL from redirect URL (this is the frontend app URL)
+        $appUrl = $redirectUrl -replace '/getAToken$', ''
+        Write-Output "Setting APP_URL to: $appUrl"
+        
+        # Update the Container App using az CLI with --set-env-vars
+        # This command will add or update the APP_URL environment variable without affecting others
+        Write-Output "Updating Container App environment variables..."
+        az containerapp update `
+            --name $apiServiceName `
+            --resource-group $resourceGroupName `
+            --set-env-vars "APP_URL=$appUrl" `
+            --output none
+        
+        if ($LASTEXITCODE -eq 0) {
+            Write-Output "Successfully updated APP_URL environment variable in API Container App."
+        } else {
+            Write-Error "Failed to update Container App environment variables. Exit code: $LASTEXITCODE"
+        }
+    } else {
+        Write-Warning "API Container App '$apiServiceName' not found in resource group '$resourceGroupName'."
+    }
+} else {
+    Write-Warning "SERVICE_API_NAME or AZURE_RESOURCE_GROUP not found in azd environment. Skipping API Container App update."
+}

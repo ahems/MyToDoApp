@@ -9,7 +9,7 @@ from azure.keyvault.secrets import SecretClient
 from typing import Optional
 
 class RecommendationEngine:
-    """Recommendation engine that uses Entra ID (Azure AD) auth for Azure OpenAI.
+    """Recommendation engine that uses Entra ID (Azure AD) auth for Azure AI Foundry.
 
     Local debugging (IS_LOCALHOST=true):
         - Uses DefaultAzureCredential excluding managed identity, obtaining a user token.
@@ -69,12 +69,12 @@ class RecommendationEngine:
             self._endpoint = os.environ.get("AZURE_OPENAI_ENDPOINT", "") or ""
 
         if not self.deployment or not self._endpoint:
-            raise ValueError("Azure OpenAI deployment name or endpoint is missing. Ensure environment variables are set.")
+            raise ValueError("Azure AI Foundry deployment name or endpoint is missing. Ensure environment variables are set.")
 
         # Try to obtain Azure AD token
         token_ok = self._refresh_token_if_needed(force=True)
         if token_ok:
-            print("[RecommendationEngine] Using Entra ID token authentication for Azure OpenAI.")
+            print("[RecommendationEngine] Using Entra ID token authentication for Azure AI Foundry.")
             self.client = AzureOpenAI(
                 azure_endpoint=self._endpoint,
                 api_version="2024-02-15-preview",

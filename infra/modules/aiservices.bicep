@@ -103,7 +103,7 @@ resource account 'Microsoft.CognitiveServices/accounts@2025-06-01' = {
   sku: sku
 }
 
-// Grant the managed identity data-plane permission to invoke Azure OpenAI deployments (chat/completions, embeddings, etc.)
+// Grant the managed identity data-plane permission to invoke Azure AI Foundry deployments (chat/completions, embeddings, etc.)
 // Role: Cognitive Services OpenAI User (least-privilege for inference)
 // If you need to manage deployments, consider Cognitive Services OpenAI Contributor instead.
 // Role definition ID source: Built-in role GUID for 'Cognitive Services OpenAI User'. Adjust if tenant introduces custom role.
@@ -118,7 +118,7 @@ resource openAiUserRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-
   }
 }
 
-// Grant the same data-plane role to the specified AAD admin/user so local development (DefaultAzureCredential using user context) can call the Azure OpenAI deployments directly.
+// Grant the same data-plane role to the specified AAD admin/user so local development (DefaultAzureCredential using user context) can call the Azure AI Foundry deployments directly.
 // Uses deterministic GUID to stay idempotent across deployments.
 resource openAiUserLocalRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   name: guid(account.id, aadAdminObjectId, 'openai-user')
