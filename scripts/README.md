@@ -34,29 +34,47 @@ When you run `azd up` or other `azd` commands, these scripts execute in the foll
   - Assigns the web app service principal to the API app role
   - Enables web-to-API authentication via client credentials flow
 
-**Azure OpenAI Discovery:**
+**Azure OpenAI Model Discovery:**
 
-- Enumerates all available models in the Azure OpenAI account
+- Enumerates all available models in the Azure AI Services account
 - Retrieves quota availability for each model in the deployment region
-- Selects the best available chat model (e.g., GPT-4, GPT-3.5-turbo)
-- Selects the best available embedding model (e.g., text-embedding-ada-002)
-- Prioritizes models with highest available capacity
-- Stores model selection in `azd` environment for Bicep deployment
+- Selects the best available chat model using intelligent filtering:
+  - **Prefers "mini" models** (e.g., gpt-4o-mini) for cost-effectiveness
+  - **Excludes "nano" models** if better options exist
+  - Falls back to any available model if neither mini nor standard models are available
+- Selects the best available embedding model with preference:
+  - **Prefers "small" embedding models** for cost optimization
+  - Falls back to any available embedding model
+- Prioritizes models with highest available capacity within each category
+- **Stores model selection as environment variables** for consumption by Bicep templates
+  - The actual model deployments are created by the [`aiservices.bicep`](../infra/README.md#5-aiservicesbicep) module during `azd provision`
+  - This separation allows the script to discover available models before infrastructure deployment
+
+**Azure AI Services Account Creation:**
+
+- Creates Azure AI Services (Cognitive Services) account if it doesn't exist
+  - Account type: `AIServices` (includes Azure OpenAI and other AI services)
+  - SKU: `S0` (Standard tier)
+  - Custom subdomain configured for API access
+  - Derives unique account name if not specified (format: `todoapp-openai-<hash>`)
+- **Note**: The script creates the account but does NOT deploy models
+  - Model deployments are handled by Bicep infrastructure (see [Infrastructure Documentation](../infra/README.md#5-aiservicesbicep))
+  - The script sets environment variables that the Bicep templates use to deploy the selected models
 
 **Environment Setup:**
 
 - Sets `TENANT_ID`, `AZURE_SUBSCRIPTION_ID` from current Azure context
 - Captures `NAME` (user email) and `OBJECT_ID` (user principal ID)
 - Creates resource group if it doesn't exist
-- Derives Azure OpenAI account name if not specified
+- Validates or creates Azure AI Services account in target region
 
 ### Key Functions
 
 - `Ensure-AppRegistration`: Creates or validates web app registration with OAuth secret
 - `Ensure-ApiAppRegistration`: Creates API app with app roles and assigns permissions
-- `Ensure-OpenAIAccount`: Creates Azure OpenAI account if missing
-- `Get-AccountModelsMultiVersion`: Enumerates available models using Azure REST API
-- `Get-AoaiModelAvailableQuota`: Retrieves real-time quota availability per model/region
+- `Ensure-OpenAIAccount`: Creates Azure AI Services account (type: AIServices, SKU: S0) if missing
+- `Get-AccountModelsMultiVersion`: Enumerates available models using Azure REST API (API version: 2025-07-01-preview)
+- `Get-AoaiModelAvailableQuota`: Retrieves real-time quota availability per model/region/SKU
 
 ### Environment Variables Set
 
@@ -83,11 +101,34 @@ When you run `azd up` or other `azd` commands, these scripts execute in the foll
 | `OBJECT_ID` | Current user principal ID |
 | `SQL_DATABASE_NAME` | Name of the Database (default: todo) |
 
+### Model Selection Strategy
+
+The script uses a sophisticated filtering approach to select optimal models:
+
+**Chat Model Selection:**
+
+1. **First preference**: Models matching "mini" (case-insensitive regex `(?i)mini`)
+   - Example: `gpt-4o-mini`, `gpt-35-turbo-mini`
+   - Rationale: Best balance of performance and cost
+2. **Second preference**: Models NOT matching "nano" (excludes `(?i)nano`)
+   - Avoids very small models like `gpt-4-nano` unless necessary
+3. **Fallback**: Any available model with highest capacity
+   - Ensures deployment succeeds even in constrained quota scenarios
+
+**Embedding Model Selection:**
+
+1. **First preference**: Embedding models matching "small" (case-insensitive regex `(?i)small`)
+   - Example: `text-embedding-3-small`
+   - Rationale: Cost-effective for most embedding use cases
+2. **Fallback**: Any available embedding model
+   - Prioritizes by capacity (highest first) and version (newest first)
+
 ### Performance Optimization
 
 - **Parallel quota retrieval:** Uses PowerShell 7+ parallel execution (throttle limit: 8)
 - **Idempotent:** Safe to run multiple times; skips existing resources
 - **Quota-aware:** Only selects models with available capacity
+- **Smart filtering:** Prefers cost-effective models while ensuring availability
 - **Fallback logic:** Uses sequential execution if parallel not supported
 
 ### preup.ps1 Error Handling

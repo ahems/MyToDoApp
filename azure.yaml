@@ -14,23 +14,22 @@ hooks:
     shell: pwsh
     run: ./scripts/postprovision.ps1
     interactive: true
+  postdeploy:
+    shell: pwsh
+    run: ./scripts/postdeploy.ps1
+    interactive: true
   postdown:
     shell: pwsh
     run: ./scripts/postdown.ps1
     interactive: true
 services:
     app:
-        project: .
+        project: ./app
         host: containerapp
         language: python
         docker:
             path: dockerfile
             remoteBuild: true
-        hooks:
-            postdeploy:
-              shell: pwsh
-              run: ./scripts/postdeploy.ps1
-              interactive: true
     api:
         project: ./api
         host: containerapp

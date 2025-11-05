@@ -634,7 +634,14 @@ if (-not $allQuota -or $allQuota.Count -eq 0) { Write-Warning 'No quota data col
 Write-Host "Sorting quota results..." -ForegroundColor DarkGreen
 $sorted = $allQuota | Sort-Object -Property @{Expression={ [int]$_.AvailableCapacity }; Descending=$true}, @{Expression={$_.ModelVersion}; Descending=$true}
 
-$chatPick = $sorted | Select-Object -First 1
+# Select chat model with preference for 'mini' models, then exclude 'nano', then any available
+$chatPick = $sorted | Where-Object { $_.ModelName -match '(?i)mini' } | Select-Object -First 1
+if (-not $chatPick) {
+	$chatPick = $sorted | Where-Object { $_.ModelName -notmatch '(?i)nano' } | Select-Object -First 1
+}
+if (-not $chatPick) {
+	$chatPick = $sorted | Select-Object -First 1
+}
 if ($chatPick) {
 	Set-AzdValue -Name 'chatGptDeploymentVersion' -Value $chatPick.ModelVersion
 	Set-AzdValue -Name 'chatGptSkuName' -Value $chatPick.SkuName
@@ -643,7 +650,12 @@ if ($chatPick) {
 	Write-Host "Selected Chat model: $($chatPick.ModelName) $($chatPick.ModelVersion) SKU $($chatPick.SkuName) Capacity $($chatPick.AvailableCapacity)" -ForegroundColor Green
 } else { Write-Warning 'No chat model selected.' }
 
-$embeddingPick = $sorted | Where-Object { $_.ModelName -like '*embedding*' } | Select-Object -First 1
+# Select embedding model with preference for 'small' models, then any available
+$embeddingCandidates = $sorted | Where-Object { $_.ModelName -like '*embedding*' }
+$embeddingPick = $embeddingCandidates | Where-Object { $_.ModelName -match '(?i)small' } | Select-Object -First 1
+if (-not $embeddingPick) {
+	$embeddingPick = $embeddingCandidates | Select-Object -First 1
+}
 if ($embeddingPick) {
 	Set-AzdValue -Name 'embeddingDeploymentVersion' -Value $embeddingPick.ModelVersion
 	Set-AzdValue -Name 'embeddingDeploymentSkuName' -Value $embeddingPick.SkuName

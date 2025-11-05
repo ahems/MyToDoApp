@@ -13,6 +13,7 @@
       "path": "/graphql"
     },
     "host": {
+      "port": 5000,
       "cors": {
         "origins": [],
         "allow-credentials": false

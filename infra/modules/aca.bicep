@@ -93,7 +93,7 @@ resource frontEnd 'Microsoft.App/containerApps@2024-03-01' = {
     }
   }
   tags: {
-    'azd-service-name': 'my-to-do-app'
+    'azd-service-name': 'app'
   }
   properties: {
     managedEnvironmentId: containerAppEnv.id
@@ -215,7 +215,7 @@ resource middleTier 'Microsoft.App/containerApps@2024-03-01' = {
     }
   }
   tags: {
-    'azd-service-name': 'my-to-do-api'
+    'azd-service-name': 'api'
   }
   properties: {
     managedEnvironmentId: containerAppEnv.id

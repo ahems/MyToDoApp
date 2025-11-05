@@ -2,18 +2,31 @@
 
 This directory contains the Infrastructure as Code (IaC) for the MyToDoApp application using Azure Bicep templates. The infrastructure deploys a modern, cloud-native todo application with Azure Entra ID (Azure AD) authentication, Azure OpenAI integration, and a serverless architecture.
 
+## Prerequisites
+
+Before deploying this infrastructure, the [`preup.ps1`](../scripts/README.md#1-preupps1) script must run to prepare the environment. This script:
+
+- Creates Azure AD app registrations for web and API authentication
+- Creates the Azure AI Services account
+- Discovers available Azure OpenAI models and quota in the target region
+- Sets environment variables that the Bicep templates consume
+
+The Bicep templates then use these environment variables to deploy model deployments and configure authentication settings. For detailed information about the pre-deployment preparation, see the [Scripts Documentation](../scripts/README.md).
+
 ## Architecture Overview
 
 The application consists of:
 
 - **Frontend Web App**: Flask application with user authentication and UI
-- **Backend API**: Data API Builder (DAB) providing REST/GraphQL endpoints
+- **Backend API**: Data API Builder (DAB) providing REST/GraphQL endpoints (see [API Documentation](../api/README.md))
 - **Database**: Azure SQL Database with Entra ID authentication
 - **AI Services**: Azure OpenAI for intelligent recommendations
 - **Session Storage**: Azure Cache for Redis with Entra ID authentication
 - **Monitoring**: Application Insights and Log Analytics
 
 All services use **Azure Entra ID (Azure AD) authentication** with managed identities for secure, passwordless connections.
+
+For information about the deployment lifecycle scripts, see the [Scripts Documentation](../scripts/README.md).
 
 ---
 
@@ -58,22 +71,24 @@ This file contains all the configurable parameters used by `main.bicep`. The Azu
 
 #### Azure OpenAI Chat Model Parameters
 
-These parameters are automatically selected by the `preup.ps1` script based on available quota:
+These parameters are automatically discovered and set by the [`preup.ps1`](../scripts/README.md#1-preupps1) script based on available quota in the target region:
 
 | Parameter | Source | Description |
 |-----------|--------|-------------|
 | `chatGptDeploymentVersion` | `chatGptDeploymentVersion` | Model version (e.g., "0613", "1106") |
 | `chatGptSkuName` | `chatGptSkuName` | SKU tier (e.g., "Standard", "GlobalStandard") |
-| `chatGptModelName` | `chatGptModelName` | Model name (e.g., "gpt-35-turbo", "gpt-4") |
+| `chatGptModelName` | `chatGptModelName` | Model name (e.g., "gpt-35-turbo", "gpt-4") - prefers "mini" models |
 | `availableChatGptDeploymentCapacity` | `availableChatGptDeploymentCapacity` | Available capacity in tokens per minute (TPM) |
 
 #### Azure OpenAI Embedding Model Parameters
+
+These parameters are automatically discovered and set by the [`preup.ps1`](../scripts/README.md#1-preupps1) script:
 
 | Parameter | Source | Description |
 |-----------|--------|-------------|
 | `embeddingDeploymentVersion` | `embeddingDeploymentVersion` | Embedding model version |
 | `embeddingSkuName` | `embeddingDeploymentSkuName` | SKU for embeddings |
-| `embeddingModelName` | `embeddingDeploymentModelName` | Embedding model name (e.g., "text-embedding-ada-002") |
+| `embeddingModelName` | `embeddingDeploymentModelName` | Embedding model name (e.g., "text-embedding-ada-002") - prefers "small" models |
 | `availableEmbeddingDeploymentCapacity` | `availableEmbeddingDeploymentCapacity` | Available embedding capacity |
 
 #### Feature Flags
@@ -207,11 +222,19 @@ Deploys Azure SQL Database with Entra ID authentication using the Azure Verified
 **What it does:**
 
 - Creates an Azure SQL Server with Entra ID-only authentication
-- Creates a "todo" database with serverless General Purpose SKU
+- Creates a "todo" database with serverless General Purpose SKU (name configurable via `SQL_DATABASE_NAME` env var, default: `todo`)
 - Configures the managed identity as the SQL admin
 - Grants the admin user SQL admin access for local development
 - Optionally enables Azure SQL Database free tier
 - Stores connection string in Key Vault
+
+**Post-deployment configuration:**
+
+After the database is created, the [`postprovision.ps1`](../scripts/README.md#2-postprovisionps1) script runs to:
+
+- Grant database roles (`db_datareader`, `db_datawriter`, `db_ddladmin`) to the managed identity
+- Create the `dbo.todo` table schema with JSON validation constraints
+- Configure external user mapping for passwordless authentication
 
 **Why it's needed:**
 
@@ -241,11 +264,15 @@ Server=tcp:<server>.database.windows.net,1433;Initial Catalog=todo;Authenticatio
 
 Deploys Azure AI Services (Azure OpenAI) with chat and embedding model deployments.
 
+**Prerequisites:**
+
+This module requires the Azure AI Services account to already exist (created by [`preup.ps1`](../scripts/README.md#1-preupps1)) and uses environment variables set by that script to configure the model deployments.
+
 **What it does:**
 
-- Creates an Azure AI Services account (kind: AIServices)
-- Deploys a chat model (e.g., GPT-3.5-turbo or GPT-4)
-- Deploys an embedding model (e.g., text-embedding-ada-002)
+- References the existing Azure AI Services account (kind: AIServices)
+- Deploys a chat model based on parameters from [`preup.ps1`](../scripts/README.md#model-selection-strategy) (e.g., GPT-4o-mini, GPT-3.5-turbo)
+- Deploys an embedding model based on parameters from `preup.ps1` (e.g., text-embedding-3-small)
 - Grants "Cognitive Services OpenAI Contributor" role to managed identity
 - Grants "Cognitive Services OpenAI Contributor" role to admin user
 - Stores endpoint and deployment name in Key Vault
@@ -347,10 +374,11 @@ Deploys the Azure Container Apps environment and both container apps (web app an
   - Startup probe for managed identity readiness
   - Environment variables for Key Vault, Redis, OpenAI, and API access
   - Scale rules (0-3 replicas based on HTTP requests)
-- Deploys the **backend API** container with:
+- Deploys the **backend API** container (see [API Documentation](../api/README.md)) with:
   - External ingress on port 5000
   - Environment variables for database, authentication, and Azure AD validation
   - Data API Builder (DAB) configuration for REST/GraphQL APIs
+  - Managed Identity token wait logic via custom entrypoint
 - Stores generated URLs in Key Vault (redirect URI, API URL)
 - Uses a bootstrap image initially (replaced by azd deploy)
 
@@ -416,28 +444,39 @@ Deploys the Azure Container Apps environment and both container apps (web app an
 
 When you run `azd up` or `azd deploy`, the following happens:
 
-1. **Pre-deployment** (`scripts/preup.ps1`):
+1. **Pre-deployment** ([`preup.ps1`](../scripts/README.md#1-preupps1)):
    - Creates Azure AD app registrations (web app and API)
+   - Creates Azure AI Services account
    - Discovers available Azure OpenAI models and quota
-   - Selects optimal chat and embedding models
+   - Selects optimal chat and embedding models (prefers "mini" and "small" models)
    - Stores configuration in azd environment
 
-2. **Infrastructure deployment** (`azd provision`):
+2. **Infrastructure provisioning** (`azd provision` runs `main.bicep`):
    - Deploys `main.bicep` with parameters from `main.parameters.json`
    - Modules are deployed in dependency order:
      1. Identity, Key Vault, Redis
      2. Authentication, Database, ACR, Application Insights, AI Services
      3. Container Apps (using bootstrap images)
 
-3. **Application deployment** (`azd deploy`):
+3. **Post-provisioning** ([`postprovision.ps1`](../scripts/README.md#2-postprovisionps1)):
+   - Grants managed identity database roles on SQL Database
+   - Creates `dbo.todo` table schema
+   - Configures external user for passwordless database access
+
+4. **Application deployment** (`azd deploy`):
    - Builds Docker images for web app and API
    - Pushes images to ACR
    - Updates container apps with new images
-   - Updates Azure AD app redirect URIs (`scripts/update-app.ps1`)
 
-4. **Post-deployment**:
-   - Outputs connection strings and URLs
-   - App is ready to use
+5. **Post-deployment** ([`postdeploy.ps1`](../scripts/README.md#3-postdeployps1)):
+   - Updates Azure AD app redirect URIs with deployed container app URLs
+   - Configures logout redirect URLs
+
+6. **Post-up** ([`postup.ps1`](../scripts/README.md#4-postupps1)):
+   - Displays connection information and next steps
+   - Outputs application URLs
+
+For detailed information about all deployment lifecycle scripts, see the [Scripts Documentation](../scripts/README.md).
 
 ---
 
@@ -519,11 +558,13 @@ This ensures:
 
 - **Issue**: Model quota not available in region
 - **Solution**: Run `azd env set AZURE_LOCATION <region>` with a different region, then `azd provision`
+- **Details**: See [`preup.ps1`](../scripts/README.md#model-selection-strategy) for model selection logic
 
 ### Container App Startup Probe Failing
 
 - **Issue**: Managed identity token not available
 - **Solution**: Increase `initialDelaySeconds` in startup probe configuration (default is 15 seconds)
+- **Details**: See [API troubleshooting](../api/README.md#managed-identity-token-timeout) for MI token wait configuration
 
 ### Redis Authentication Fails
 
@@ -534,6 +575,13 @@ This ensures:
 
 - **Issue**: JWT token validation mismatch
 - **Solution**: Verify `API_APP_ID_URI` and `API_APP_ID` environment variables match the token audience
+- **Details**: See [API configuration](../api/README.md#environment-variables) for required authentication variables
+
+### Database Connection Fails
+
+- **Issue**: Database permissions not configured correctly
+- **Solution**: Re-run post-provisioning script: `pwsh scripts/postprovision.ps1`
+- **Details**: See [`postprovision.ps1`](../scripts/README.md#2-postprovisionps1) for database setup requirements
 
 ---
 
@@ -561,7 +609,25 @@ Approximate monthly costs (pay-as-you-go, US West region):
 
 ---
 
-## Additional Resources
+## Related Documentation
+
+### Project Documentation
+
+- **[Scripts Documentation](../scripts/README.md)**: Detailed information about all azd lifecycle scripts
+  - [`preup.ps1`](../scripts/README.md#1-preupps1): Pre-deployment setup (AD apps, AI Services, model selection)
+  - [`postprovision.ps1`](../scripts/README.md#2-postprovisionps1): Database configuration after provisioning
+  - [`postdeploy.ps1`](../scripts/README.md#3-postdeployps1): Update redirect URIs after deployment
+  - [`postup.ps1`](../scripts/README.md#4-postupps1): Display connection information
+  - [`postdown.ps1`](../scripts/README.md#5-postdownps1): Clean up after deprovisioning
+
+- **[API Documentation](../api/README.md)**: Data API Builder service configuration
+  - [Dockerfile structure](../api/README.md#dockerfile)
+  - [Entrypoint script logic](../api/README.md#entrypointsh)
+  - [DAB configuration](../api/README.md#dab-configjson)
+  - [Authentication setup](../api/README.md#authentication)
+  - [Troubleshooting guide](../api/README.md#troubleshooting)
+
+### Azure Resources
 
 - [Azure Bicep Documentation](https://learn.microsoft.com/azure/azure-resource-manager/bicep/)
 - [Azure Container Apps Documentation](https://learn.microsoft.com/azure/container-apps/)

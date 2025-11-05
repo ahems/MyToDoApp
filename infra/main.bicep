@@ -227,3 +227,7 @@ output AZURE_CLIENT_ID string = identity.outputs.clientId
 output USER_MANAGED_IDENTITY_NAME string = identityName
 
 output SQL_SERVER_NAME string = sqlServerName
+
+// Service names for azd deploy mapping (required by azd CLI)
+output SERVICE_APP_NAME string = 'todoapp-app-${resourceToken}'
+output SERVICE_API_NAME string = 'todoapp-api-${resourceToken}'
