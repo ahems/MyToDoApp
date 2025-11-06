@@ -9,57 +9,48 @@ resource azidentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31
   name: identityName
 }
 
-resource acrContributorRoleAssignment 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid('${acr.name}-contributor')
-  scope: acr
-  properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'b24988ac-6180-42a0-ab88-20f7382dd24c') // Contributor role
-    principalId: azidentity.properties.principalId
-    principalType: 'ServicePrincipal'
-  }
-}
-
-resource acr 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
-  name: acrName
-  location: location
-  sku: {
-    name: 'Basic'
-  }
-  properties: {
-    adminUserEnabled: adminUserEnabled
-    zoneRedundancy: 'Disabled'
-  }
-}
-
 resource workspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
   name: workspaceName
 }
 
-resource diagnostics 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
-  scope: acr
-  name: diagnosticsName
-  properties: {
-    workspaceId: workspace.id
-    logs: [
+// Use Azure Verified Module for Azure Container Registry
+module acr 'br/public:avm/res/container-registry/registry:0.9.3' = {
+  name: 'container-registry-${acrName}'
+  params: {
+    name: acrName
+    location: location
+    acrSku: 'Basic'
+    acrAdminUserEnabled: adminUserEnabled
+    zoneRedundancy: 'Disabled'
+    roleAssignments: [
       {
-        category: 'ContainerRegistryRepositoryEvents'
-        enabled: true
-      }
-      {
-        category: 'ContainerRegistryLoginEvents'
-        enabled: true
+        principalId: azidentity.properties.principalId
+        roleDefinitionIdOrName: 'Contributor'
+        principalType: 'ServicePrincipal'
       }
     ]
-    metrics: [
+    diagnosticSettings: [
       {
-        category: 'AllMetrics'
-        enabled: true
+        name: diagnosticsName
+        workspaceResourceId: workspace.id
+        logCategoriesAndGroups: [
+          {
+            category: 'ContainerRegistryRepositoryEvents'
+          }
+          {
+            category: 'ContainerRegistryLoginEvents'
+          }
+        ]
+        metricCategories: [
+          {
+            category: 'AllMetrics'
+          }
+        ]
       }
     ]
   }
 }
 
-
-output name string = acr.name
+output name string = acr.outputs.name
 // Expose the registry login server so it can propagate to environment variables via root module output
-output loginServer string = acr.properties.loginServer
+output loginServer string = acr.outputs.loginServer

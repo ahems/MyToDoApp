@@ -108,7 +108,7 @@ Use the terminal in Visual Studio Code to do these steps. From the top menu, sel
 
    You will be prompted to login to Azure the first time you run this command; select "Y" in order to so so. A web browser will pop up and you will select the account you wish to use. Please note if this fails, make sure you have followed Step at the top of the page to launch the CodeSpace in *Visual Studio Code Dev Containers*.
 
-   You may be asked to log in a second time using https://microsoft.com/devicelogin and entering a code (provided). Do so, if asked. You may also be asked "Are you trying to sign in to Microsoft Azure PowerShell?" - select Yes if so in order to run the automated scripts of this deployment.
+   You may be asked to log in a second time using <https://microsoft.com/devicelogin> and entering a code (provided). Do so, if asked. You may also be asked "Are you trying to sign in to Microsoft Azure PowerShell?" - select Yes if so in order to run the automated scripts of this deployment.
 
 4. De-Provision Infrastructure
 

@@ -30,6 +30,45 @@ For information about the deployment lifecycle scripts, see the [Scripts Documen
 
 ---
 
+## Azure Verified Modules (AVM)
+
+This infrastructure leverages **Azure Verified Modules (AVM)** wherever possible to ensure best practices, maintainability, and consistency. AVM modules are community-maintained, Microsoft-endorsed Bicep modules that provide:
+
+- **Consistent patterns** across all Azure resources
+- **Built-in features** for diagnostics, role assignments, locks, and tags
+- **Regular updates** aligned with Azure API changes
+- **Best practices** for security, reliability, and performance
+- **Community support** and extensive documentation
+
+### Modules Using AVM
+
+The following infrastructure modules use Azure Verified Modules:
+
+| Module | AVM Module Path | Version | Benefits |
+|--------|----------------|---------|----------|
+| **identity.bicep** | `avm/res/managed-identity/user-assigned-identity` | 0.4.2 | Built-in role assignment support, consistent output structure |
+| **keyvault.bicep** | `avm/res/key-vault/vault` | 0.13.3 | Simplified RBAC, automatic private endpoint support, diagnostic settings |
+| **applicationinsights.bicep** | `avm/res/operational-insights/workspace` and `avm/res/insights/component` | 0.12.0 and 0.6.1 | Integrated monitoring solution with workspace management and role assignments |
+| **acr.bicep** | `avm/res/container-registry/registry` | 0.9.3 | Built-in diagnostics, RBAC configuration, support for geo-replication |
+
+### Custom Modules (Not Using AVM)
+
+Some modules remain custom-built due to specific requirements not fully supported by available AVM modules:
+
+| Module | Reason for Custom Implementation |
+|--------|----------------------------------|
+| **redis.bicep** | Uses Azure Cache for Redis API version 2024-11-01 with Entra ID authentication and access policy assignments (`accessPolicyAssignments`). AVM Redis module does not yet support these advanced Entra ID features required for passwordless authentication. |
+| **database.bicep** | Requires specific SQL Server configuration for Entra ID-only authentication mode and serverless database tier with custom auto-pause settings. Post-deployment schema creation via PowerShell script. |
+| **aiservices.bicep** | Deploys Azure AI Services (formerly Cognitive Services) with multiple AI Foundry model deployments (chat and embedding models). Requires dynamic model selection based on regional quota availability determined by pre-deployment scripts. |
+| **aca.bicep** | Deploys Azure Container Apps with complex custom environment variables, managed identity integration, and dynamic configuration from multiple sources. Requires tight integration with Key Vault secrets and runtime environment setup. |
+| **authentication.bicep** | Simple deployment script module that stores authentication configuration in Key Vault secrets. Not a resource deployment module. |
+
+### Future AVM Migration
+
+As Azure Verified Modules mature and add support for newer API features (especially Entra ID authentication patterns, heavily used in this demo application), we will continue to migrate custom modules to AVM. This ensures the infrastructure benefits from community improvements while maintaining all required functionality.
+
+---
+
 ## Main Bicep File
 
 ### `main.bicep`
@@ -108,9 +147,11 @@ These parameters are automatically discovered and set by the [`preup.ps1`](../sc
 
 Creates a user-assigned managed identity that serves as the security principal for all Azure resources in the application.
 
+**Uses Azure Verified Module:** `avm/res/managed-identity/user-assigned-identity:0.4.2`
+
 **What it does:**
 
-- Creates a user-assigned managed identity
+- Deploys a user-assigned managed identity using AVM
 - Defines a custom role for deployment scripts
 - Assigns the "Managed Identity Operator" role to itself
 - Grants permissions needed for Azure CLI deployment scripts
@@ -133,10 +174,13 @@ Creates a user-assigned managed identity that serves as the security principal f
 
 Deploys Azure Key Vault for secure storage of application secrets and configuration values.
 
+**Uses Azure Verified Module:** `avm/res/key-vault/vault:0.13.3`
+
 **What it does:**
 
-- Creates an Azure Key Vault with RBAC authorization enabled
-- Adds RBAC role assignments for the managed identity (`Key Vault Secrets User`)
+- Deploys an Azure Key Vault using AVM with RBAC authorization enabled
+- Configures built-in role assignments for the managed identity and admin user
+- Both assigned the `Key Vault Secrets User` role via AVM's roleAssignments parameter
 - Stores secrets for all sensitive configuration values
 
 **Why it's needed:**
@@ -153,11 +197,11 @@ Deploys Azure Key Vault for secure storage of application secrets and configurat
 - OpenAI: `AZUREOPENAIENDPOINT`
 - Application Insights: `APPLICATIONINSIGHTSCONNECTIONSTRING`
 
-**Outputs:**
+**AVM Benefits:**
 
-- `keyVaultId`: Resource ID of the Key Vault
-- `keyVaultName`: Name of the Key Vault
-- `keyVaultUri`: HTTPS endpoint for accessing secrets
+- Simplified RBAC configuration through declarative roleAssignments array
+- Automatic support for private endpoints, diagnostic settings, and locks
+- Consistent parameter naming across all Key Vault configurations
 
 ---
 
@@ -304,61 +348,78 @@ This module requires the Azure AI Services account to already exist (created by 
 
 ### `modules/applicationinsights.bicep`
 
-Deploys Application Insights and Log Analytics workspace for monitoring and diagnostics.
+Deploys Azure Monitor Application Insights and Log Analytics workspace for application monitoring and telemetry.
+
+**Uses Azure Verified Modules:**
+
+- Log Analytics Workspace: `avm/res/operational-insights/workspace:0.12.0`
+- Application Insights Component: `avm/res/insights/component:0.6.1`
 
 **What it does:**
 
-- Creates a Log Analytics workspace for log storage
-- Creates an Application Insights component linked to the workspace
-- Grants "Monitoring Metrics Publisher" role to managed identity
-- Grants "Monitoring Metrics Publisher" role to admin user
-- Configures 1 GB daily quota and 30-day retention
+- Deploys a Log Analytics workspace using AVM for log aggregation
+- Deploys an Application Insights component using AVM linked to the workspace
+- Configures built-in RBAC role assignments for the managed identity and admin user
+- Both assigned the `Monitoring Metrics Publisher` role via AVM's roleAssignments parameter
+- Disables local auth, requiring Entra ID for all access
 
 **Why it's needed:**
 
-- Monitors application performance and availability
-- Collects logs from container apps and other services
-- Tracks user flows, exceptions, and dependencies
-- Enables distributed tracing across web app and API
-- Provides dashboards and alerts for operations
+- Provides real-time monitoring of application performance and availability
+- Captures logs, metrics, and distributed traces
+- Enables alerts and diagnostics for proactive issue detection
 
-**Workspace configuration:**
+**Configuration:**
 
-- SKU: PerGB2018 (pay-as-you-go)
-- Daily quota: 1 GB
-- Retention: 30 days
+- Log Analytics: PerGB2018 SKU, 30-day retention, 1GB daily quota
+- Application Insights: Workspace-based (not classic), public network access enabled
+
+**AVM Benefits:**
+
+- Split into two focused modules following single-responsibility principle
+- Built-in diagnostic settings configuration
+- Standardized parameter structure for monitoring resources
+- Simplified RBAC configuration through declarative roleAssignments arrays
 
 ---
 
 ### `modules/acr.bicep`
 
-Deploys Azure Container Registry for storing Docker images.
+Deploys Azure Container Registry (ACR) for storing and managing container images.
+
+**Uses Azure Verified Module:** `avm/res/container-registry/registry:0.9.3`
 
 **What it does:**
 
-- Creates an Azure Container Registry (Basic SKU)
-- Enables admin user for azd deployment push
-- Grants "Contributor" role to managed identity
-- Configures diagnostic logging to Log Analytics
-- Tracks repository events and login events
+- Deploys an Azure Container Registry using AVM with Basic SKU
+- Enables admin user credentials (for simplified local development)
+- Configures diagnostic settings via AVM's diagnosticSettings parameter
+- Sends logs to Log Analytics workspace
+- Adds RBAC role assignment for the managed identity via AVM's roleAssignments parameter
+- Assigns `AcrPull` role for secure image pulling
 
 **Why it's needed:**
 
-- Stores Docker images for the web app and API containers
-- Provides private registry for secure image distribution
-- Enables Container Apps to pull images using managed identity
-- Tracks image vulnerabilities and compliance (future feature)
+- Stores Docker container images for the frontend and API
+- Provides a private registry for secure image distribution
+- Integrates with Azure Container Apps for automated deployment
 
-**Diagnostic logs:**
+**Configuration:**
 
-- Container Registry Repository Events
-- Container Registry Login Events
-- All metrics
+- Basic SKU (cost-optimized for small workloads)
+- Admin user enabled for `docker login` support
+- Diagnostic logs integrated directly into AVM module configuration
 
-**Role assignments:**
+**AVM Benefits:**
 
-- Managed identity: "Contributor" (for deployment scripts)
-- Container Apps: "AcrPull" (assigned in aca.bicep)
+- Built-in diagnostics configuration eliminates separate resource creation
+- Declarative RBAC assignments through roleAssignments parameter
+- Support for geo-replication, webhooks, and advanced security features
+
+**Outputs:**
+
+- `name`: Name of the Container Registry
+- `loginServer`: FQDN for Docker login (e.g., `myregistry.azurecr.io`)
 
 ---
 
