@@ -1,10 +1,10 @@
 # Infrastructure Documentation
 
-This directory contains the Infrastructure as Code (IaC) for the MyToDoApp application using Azure Bicep templates. The infrastructure deploys a modern, cloud-native todo application with Azure Entra ID (Azure AD) authentication, Azure AI Foundry integration, and a serverless architecture.
+This directory contains the Infrastructure as Code (IaC) for the MyToDoApp application, implemented using Azure Bicep templates. These templates are designed to be deployed using the [Azure Devloper CLI](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/), as they rely on a number of [hooks](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/azd-extensibility) implemented as powershell scripts that run before and after these scripts in order to complete the configuration. [Scripts Documentation](../scripts/README.md).
 
 ## Prerequisites
 
-Before deploying this infrastructure, the [`preup.ps1`](../scripts/README.md#1-preupps1) script must run to prepare the environment. This script:
+Before deploying this infrastructure, the [`preup.ps1`](../scripts/README.md#1-preupps1) script is run by [azd](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/) to prepare the environment. This script:
 
 - Creates Azure AD app registrations for web and API authentication
 - Creates the Azure AI Services account
@@ -17,7 +17,7 @@ The Bicep templates then use these environment variables to deploy model deploym
 
 The application consists of:
 
-- **Frontend Web App**: Flask application with user authentication and UI
+- **Frontend Web App**: Flask application with user authentication and UI implmented in Python (see [App Documentation](../app/README.md))
 - **Backend API**: Data API Builder (DAB) providing REST/GraphQL endpoints (see [API Documentation](../api/README.md))
 - **Database**: Azure SQL Database with Entra ID authentication
 - **AI Services**: Azure AI Foundry for intelligent recommendations
@@ -300,7 +300,7 @@ After the database is created, the [`postprovision.ps1`](../scripts/README.md#2-
 Server=tcp:<server>.database.windows.net,1433;Initial Catalog=todo;Authentication=Active Directory Default;
 ```
 
-**Security note:** This module includes a permissive firewall rule (`0.0.0.0 - 255.255.255.255`) for development. For production, replace with restricted IP ranges or private endpoints.
+**Security note:** This module includes a permissive firewall rule (`0.0.0.0 - 255.255.255.255`) for this sample app. For production, replace with restricted IP ranges or private endpoints.
 
 ---
 
