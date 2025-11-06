@@ -2,7 +2,7 @@
 
 ## Overview
 
-MyToDoApp is a modern, cloud-native task management application that demonstrates enterprise-grade Azure development patterns with AI integration. This sample showcases a complete full-stack application built with Flask (frontend), Data API Builder (backend API), Azure SQL Database, and Azure AI Foundry, all deployed using Azure Developer CLI (azd) with Infrastructure as Code (Bicep).
+MyToDoApp is a modern, cloud-native sample application that demonstrates enterprise-grade Azure development patterns with AI integration. This sample showcases a complete full-stack application built with Flask (frontend) using Python, Data API Builder (backend API), Azure SQL Database, and Azure AI Foundry, all deployed using Azure Developer CLI (azd) via fully automated Infrastructure as Code (Bicep).
 
 ### Key Features
 
