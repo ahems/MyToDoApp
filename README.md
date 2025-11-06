@@ -39,8 +39,6 @@ This brief video shows the application in use once it has all been deployed to A
 
 ![ToDo App Demo](images/TodoList.gif)
 
-[📹 Download full video (MP4)](images/TodoList.mp4)
-
 ### Architecture
 
 The application consists of:
