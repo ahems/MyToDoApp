@@ -1,6 +1,6 @@
 # Infrastructure Documentation
 
-This directory contains the Infrastructure as Code (IaC) for the MyToDoApp application, implemented using Azure Bicep templates. These templates are designed to be deployed using the [Azure Devloper CLI](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/), as they rely on a number of [hooks](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/azd-extensibility) implemented as powershell scripts that run before and after these scripts in order to complete the configuration. [Scripts Documentation](../scripts/README.md).
+This directory contains the Infrastructure as Code (IaC) for the MyToDoApp application, implemented using Azure Bicep templates. These templates are designed to be deployed using the [Azure Developer CLI](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/), as they rely on a number of [hooks](https://learn.microsoft.com/en-us/azure/developer/azure-developer-cli/azd-extensibility) implemented as a number of [PowerShell scripts](../scripts/README.md) that run before and after these templates in order to complete the configuration.
 
 ## Prerequisites
 
@@ -60,7 +60,7 @@ Some modules remain custom-built due to specific requirements not fully supporte
 | **redis.bicep** | Uses Azure Cache for Redis API version 2024-11-01 with Entra ID authentication and access policy assignments (`accessPolicyAssignments`). AVM Redis module does not yet support these advanced Entra ID features required for passwordless authentication. |
 | **database.bicep** | Requires specific SQL Server configuration for Entra ID-only authentication mode and serverless database tier with custom auto-pause settings. Post-deployment schema creation via PowerShell script. |
 | **aiservices.bicep** | Deploys Azure AI Services (formerly Cognitive Services) with multiple AI Foundry model deployments (chat and embedding models). Requires dynamic model selection based on regional quota availability determined by pre-deployment scripts. |
-| **aca.bicep** | Deploys Azure Container Apps with complex custom environment variables, managed identity integration, and dynamic configuration from multiple sources. Requires tight integration with Key Vault secrets and runtime environment setup. |
+| **aca.bicep**, **aca-app.bicep**, **aca-api.bicep** | Deploy Azure Container Apps with complex custom environment variables, managed identity integration, and dynamic configuration from multiple sources. Requires tight integration with Key Vault secrets and runtime environment setup. Split into three modules for better separation of concerns (environment, frontend app, backend API). |
 | **authentication.bicep** | Simple deployment script module that stores authentication configuration in Key Vault secrets. Not a resource deployment module. |
 
 ### Future AVM Migration
@@ -425,42 +425,58 @@ Deploys Azure Container Registry (ACR) for storing and managing container images
 
 ### `modules/aca.bicep`
 
-Deploys the Azure Container Apps environment and both container apps (web app and API).
+Deploys the shared Azure Container Apps managed environment.
 
 **What it does:**
 
-- Creates a Container Apps environment with Application Insights integration
-- Deploys the **frontend web app** container with:
-  - External ingress on port 80
-  - Startup probe for managed identity readiness
-  - Environment variables for Key Vault, Redis, OpenAI, and API access
-  - Scale rules (0-3 replicas based on HTTP requests)
-- Deploys the **backend API** container (see [API Documentation](../api/README.md)) with:
-  - External ingress on port 5000
-  - Environment variables for database, authentication, and Azure AD validation
-  - Data API Builder (DAB) configuration for REST/GraphQL APIs
-  - Managed Identity token wait logic via custom entrypoint
-- Stores generated URLs in Key Vault (redirect URI, API URL)
+- Creates a Container Apps managed environment with Application Insights integration
+- Configures Log Analytics workspace for container app logs
+- Assigns the user-assigned managed identity to the environment
+- Grants ACR pull permissions to the managed identity for image deployment
+- Enables zone redundancy settings (currently disabled for cost optimization)
+
+**Why it's needed:**
+
+- Provides a shared runtime environment for all container apps
+- Centralizes logging and monitoring configuration
+- Manages networking and ingress for container apps
+- Enables secure communication between containers
+
+**Outputs:**
+
+- `containerAppEnvId`: Resource ID of the Container Apps environment (used by app and API modules)
+- `applicationInsightsConnectionString`: Connection string for telemetry
+
+---
+
+### `modules/aca-app.bicep`
+
+Deploys the frontend web application container (see [App Documentation](../app/README.md)).
+
+**What it does:**
+
+- Deploys the **frontend web app** container in the shared environment
+- Configures external ingress on port 80 with HTTPS-only access
+- Sets up startup probe for managed identity readiness
+- Configures environment variables for Key Vault, Redis, OpenAI, and API access
+- Stores the redirect URI in Key Vault for Azure AD configuration
 - Uses a bootstrap image initially (replaced by azd deploy)
 
-**Frontend (Web App) features:**
+**Configuration:**
 
-- Flask application with Azure AD authentication
+- Resources: 0.5 vCPU, 1Gi memory
+- Scaling: 0-3 replicas based on HTTP requests (10 concurrent per replica)
+- Startup probe: Checks `/startupz` endpoint with 15s initial delay
+
+**Frontend (App) features:**
+
+- Flask application with Azure AD authentication (see [App Documentation](../app/README.md))
 - Session management via Redis
 - Calls backend API with OAuth2 client credentials flow
 - OpenAI integration for recommendations
 - Startup probe waits for Redis MI token availability
 
-**Backend (API) features:**
-
-- Data API Builder (DAB) for automatic REST/GraphQL generation
-- JWT validation using Azure AD (v1.0 endpoint)
-- Filters data by user OID for multi-tenancy
-- Connects to SQL Database using managed identity
-
 **Environment variables:**
-
-**Web App:**
 
 - `KEY_VAULT_NAME`: Key Vault for secrets
 - `REDIS_CONNECTION_STRING`: Entra-authenticated Redis connection
@@ -470,7 +486,40 @@ Deploys the Azure Container Apps environment and both container apps (web app an
 - `API_URL`: Backend API GraphQL endpoint
 - `API_APP_ID_URI`: API app registration URI for token requests
 
-**API:**
+**Outputs:**
+
+- `appRedirectUri`: Frontend URL for Azure AD redirect configuration
+- `appFqdn`: Fully qualified domain name of the frontend app
+
+---
+
+### `modules/aca-api.bicep`
+
+Deploys the backend API container (see [API Documentation](../api/README.md)).
+
+**What it does:**
+
+- Deploys the **backend API** container in the shared environment
+- Configures external ingress on port 5000 with HTTPS-only access
+- Sets up environment variables for database, authentication, and Azure AD validation
+- Stores the API URL in Key Vault for frontend configuration
+- Data API Builder (DAB) provides automatic REST/GraphQL generation
+- Uses a bootstrap image initially (replaced by azd deploy)
+
+**Configuration:**
+
+- Resources: 0.25 vCPU, 0.5Gi memory
+- Scaling: 0-3 replicas based on HTTP requests (10 concurrent per replica)
+
+**Backend (API) features:**
+
+- Data API Builder (DAB) for automatic REST/GraphQL generation (see [API Configuration](../api/README.md#dab-configjson))
+- JWT validation using Azure AD (v1.0 endpoint)
+- Filters data by user OID for multi-tenancy
+- Connects to SQL Database using managed identity
+- Managed Identity token wait logic via custom entrypoint
+
+**Environment variables:**
 
 - `DATABASE_CONNECTION_STRING`: SQL Database connection (Entra ID auth)
 - `REDIS_CONNECTION_STRING`: Session storage
@@ -481,23 +530,56 @@ Deploys the Azure Container Apps environment and both container apps (web app an
 - `API_APP_ID`: Just the GUID portion for JWT audience validation
 - `TENANT_ID`: Azure AD tenant for token issuer validation
 
+**Outputs:**
+
+- `apiUrl`: Backend GraphQL endpoint URL (e.g., `https://<fqdn>/graphql/`)
+- `apiFqdn`: Fully qualified domain name of the API container
+
+---
+
+### Container Apps Module Architecture
+
+The Container Apps deployment is split into three focused modules for better maintainability and separation of concerns:
+
+1. **`aca.bicep`** - Shared environment infrastructure
+   - Container Apps managed environment
+   - Log Analytics integration
+   - ACR pull role assignment
+
+2. **`aca-app.bicep`** - Frontend application (see [App Documentation](../app/README.md))
+   - Flask web application
+   - User interface and authentication
+   - OpenAI integration for recommendations
+
+3. **`aca-api.bicep`** - Backend API service (see [API Documentation](../api/README.md))
+   - Data API Builder (DAB)
+   - GraphQL/REST endpoints
+   - Database integration
+
+This modular approach allows:
+
+- Independent updates to frontend or API without redeploying the shared environment
+- Clearer separation of responsibilities
+- Easier testing and troubleshooting of individual components
+- Better alignment with microservices architecture patterns
+
+**Deployment order:**
+
+1. Environment (`aca.bicep`) - Creates shared infrastructure
+2. API (`aca-api.bicep`) - Deploys backend service, outputs API URL
+3. App (`aca-app.bicep`) - Deploys frontend, consumes API URL from step 2
+
 **Scaling:**
 
-- Min replicas: 0 (scale to zero when idle)
-- Max replicas: 3
-- Scale trigger: 10 concurrent HTTP requests per replica
+- **Both containers:** Min replicas: 0 (scale to zero when idle)
+- **Both containers:** Max replicas: 3
+- **Both containers:** Scale trigger: 10 concurrent HTTP requests per replica
 
 **Security:**
 
 - All ingress is HTTPS-only
 - Uses managed identity for ACR image pull
 - No secrets exposed in environment variables (uses Key Vault)
-
-**Outputs:**
-
-- `APP_REDIRECT_URI`: Frontend URL for Azure AD redirect
-- `API_URL`: Backend GraphQL endpoint
-- `APPLICATIONINSIGHTS_CONNECTION_STRING`: For local development
 
 ---
 
@@ -517,7 +599,9 @@ When you run `azd up` or `azd deploy`, the following happens:
    - Modules are deployed in dependency order:
      1. Identity, Key Vault, Redis
      2. Authentication, Database, ACR, Application Insights, AI Services
-     3. Container Apps (using bootstrap images)
+     3. Container Apps Environment (`aca.bicep`)
+     4. API Container (`aca-api.bicep`)
+     5. Frontend Container (`aca-app.bicep`) - depends on API URL from previous step
 
 3. **Post-provisioning** ([`postprovision.ps1`](../scripts/README.md#2-postprovisionps1)):
    - Grants managed identity database roles on SQL Database
@@ -528,6 +612,7 @@ When you run `azd up` or `azd deploy`, the following happens:
    - Builds Docker images for web app and API
    - Pushes images to ACR
    - Updates container apps with new images
+   - See [App Documentation](../app/README.md) and [API Documentation](../api/README.md) for container details
 
 5. **Post-deployment** ([`postdeploy.ps1`](../scripts/README.md#3-postdeployps1)):
    - Updates Azure AD app redirect URIs with deployed container app URLs
@@ -560,6 +645,11 @@ CLIENTSECRET=<web-app-client-secret>
 ```
 
 Your local Azure CLI or Visual Studio login will be used for managed identity authentication during development.
+
+For more details on running the application locally:
+
+- [App local development](../app/README.md#local-development)
+- [API local development](../api/README.md#local-development)
 
 ---
 

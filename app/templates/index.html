@@ -13,12 +13,15 @@
     <br/>
     <div class="container">
         <div class="h-100 p-5 bg-body-tertiary border rounded-3">
-            <h2>{{ session["name"] }}'s To-Do List</h1>
+            <h2>{{ session["name"] }}'s To-Do List</h2>
         </div>
         <br />
-        <div class="subtitle">
-            <a href='/logout'>Sign Out</a>
+        <div class="h-100 p-3 bg-body-tertiary border rounded-3">
+            <div class="subtitle text-center">
+                <a href='/logout' class="btn btn-outline-secondary">Sign Out</a>
+            </div>
         </div>
+        <br />
         <div class="row">
             <div class="col-7">
                 <form>
@@ -49,7 +52,7 @@
                                 </div>
                                 <span>
                                 <!-- Button trigger modal -->
-                                <a type="button" class="btn btn-danger delete-btn" data-bs-toggle="modal" data-bs-target="#confirmModal" data-url="{{ url_for('remove_todo', id=todo.id) }}" data-taskname="{{ todo.name }}"">Remove</a>
+                                <a type="button" class="btn btn-danger delete-btn" data-bs-toggle="modal" data-bs-target="#confirmModal" data-url="{{ url_for('remove_todo', id=todo.id) }}" data-taskname="{{ todo.name }}">Remove</a>
                             </span>
                         </li>
                         {% endfor %}

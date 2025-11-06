@@ -170,37 +170,71 @@ module appinsights 'modules/applicationinsights.bicep' = {
 }
 
 module containerApp 'modules/aca.bicep' = {
-  name: 'Deploy-Container-App'
+  name: 'Deploy-Container-App-Environment'
+  params: {
+    location: location
+    appInsightsName:appInsightsName
+    containerAppEnvName:'todoapp-env-${resourceToken}'
+    workspaceName:workspaceName
+    containerRegistryName:acrName
+    identityName:identityName
+  }
+  dependsOn: [
+    appinsights
+    identity
+    acr
+  ]
+}
+
+module containerAppApi 'modules/aca-api.bicep' = {
+  name: 'Deploy-Container-App-API'
+  params: {
+    location: location
+    appInsightsName:appInsightsName
+    apiName:'todoapp-api-${resourceToken}'
+    containerRegistryName:acrName
+    identityName:identityName
+    sqlConnectionString: database.outputs.connectionString
+    revisionSuffix:revisionSuffix
+    redisConnectionString: redis.outputs.entraConnectionString
+    clientId: webAppClientId
+    apiAppIdUri: apiAppIdUri
+    keyVaultName:keyVaultName
+    containerAppEnvId: containerApp.outputs.containerAppEnvId
+    minReplica:0
+    maxReplica:3
+  }
+  dependsOn: [
+    keyvault
+  ]
+}
+
+module containerAppFrontend 'modules/aca-app.bicep' = {
+  name: 'Deploy-Container-App-Frontend'
   params: {
     keyVaultName:keyVaultName
     location: location
     appInsightsName:appInsightsName
     appName:'todoapp-app-${resourceToken}'
-    apiName:'todoapp-api-${resourceToken}'
-    containerAppEnvName:'todoapp-env-${resourceToken}'
-    workspaceName:workspaceName
     openAiName:cognitiveservicesname    
     containerRegistryName:acrName
     identityName:identityName
     openAiDeploymentName:openAiDeploymentName
     minReplica:0
     maxReplica:3
-    sqlConnectionString: database.outputs.connectionString
     revisionSuffix:revisionSuffix
     redisConnectionString: redis.outputs.entraConnectionString
-    clientId: webAppClientId
     apiAppIdUri: apiAppIdUri
+    containerAppEnvId: containerApp.outputs.containerAppEnvId
+    apiUrl: containerAppApi.outputs.apiUrl
   }
   dependsOn: [
-    appinsights
-    identity
     cognitiveservices
-    acr
     keyvault
   ]
 }
 
-output APP_REDIRECT_URI string = containerApp.outputs.APP_REDIRECT_URI
+output APP_REDIRECT_URI string = containerAppFrontend.outputs.appRedirectUri
 
 // Expose values needed for local debugging / .env population
 // Key Vault name (already determined as a param -> output for azd env injection)
@@ -212,14 +246,14 @@ output REDIS_CONNECTION_STRING string = redis.outputs.entraConnectionString
 // Application Insights connection string (need to reference component resource id after module deployment)
 // The module doesn't output it directly, so recreate the name and reference the implicit resource symbol in the module via existing name
 // appinsights module uses name appInsightsName; we can read its properties via symbolic name 'appinsights'.
-output APPLICATIONINSIGHTS_CONNECTION_STRING string = containerApp.outputs.APPLICATIONINSIGHTS_CONNECTION_STRING
+output APPLICATIONINSIGHTS_CONNECTION_STRING string = containerApp.outputs.applicationInsightsConnectionString
 
 // API URL (GraphQL endpoint) - constructed similarly to what aca module sets inside env values
 // The middle tier container app FQDN is not surfaced directly; derive using known naming convention from aca module parameters
 // We add an output in aca module instead would be cleaner, but for now replicate pattern: apiName = 'todoapp-api-${resourceToken}'
 // Since containerApp module internal resource name uses apiName param, we cannot access its properties here without an output. TODO: add output in aca module.
 // Placeholder output (empty) until module is updated; avoids breaking template. Next change will add actual output from aca module.
-output API_URL string = containerApp.outputs.API_URL
+output API_URL string = containerAppApi.outputs.apiUrl
 
 // Azure Client Id of the user-assigned managed identity
 output AZURE_CLIENT_ID string = identity.outputs.clientId
