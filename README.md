@@ -1,8 +1,8 @@
-# ToDo App Sample
+# Azure Sample Application Demo
 
 ## Overview
 
-MyToDoApp is a modern, cloud-native sample application that demonstrates enterprise-grade Azure development patterns with AI integration. This sample showcases a complete full-stack application built with Flask (frontend) using Python, Data API Builder (backend API), Azure SQL Database, and Azure AI Foundry, all deployed using Azure Developer CLI (azd) via fully automated Infrastructure as Code (Bicep).
+This is a modern, cloud-native sample application that demonstrates enterprise-grade Azure development patterns with AI integration. This sample showcases a complete full-stack application built with Flask (frontend) using Python, Data API Builder (backend API), Azure SQL Database, and Azure AI Foundry, all deployed using Azure Developer CLI (azd) via fully automated Infrastructure as Code (Bicep) and protected throughout with Entra ID.
 
 ### Key Features
 
@@ -14,6 +14,32 @@ MyToDoApp is a modern, cloud-native sample application that demonstrates enterpr
 - **📈 Comprehensive Monitoring**: OpenTelemetry integration with Application Insights for telemetry, logging, and performance tracking
 - **🚀 Serverless Deployment**: Runs on Azure Container Apps for automatic scaling and high availability
 - **👥 User Data Isolation**: Row-level security ensures users can only access their own tasks
+
+## Usage Demo
+
+### Initial Home Page
+
+This is how the home page looks once it has all been deployed to Azure:
+
+![Home Page](images/start.png)
+
+### Loggging in
+
+Once the user clicks the Log In button, they will be prompted for permissions the first time they use the app, like this:
+
+![Permissions Requested](images/PermissionsRequested.png)
+
+### Logged-In Home Page
+
+Once logged in, the page looks like this, initially:
+
+![Logged In](images/home.png)
+
+This brief video shows the application in use once it has all been deployed to Azure and the user has logged in:
+
+![ToDo App Demo](images/TodoList.gif)
+
+[📹 Download full video (MP4)](images/TodoList.mp4)
 
 ### Architecture
 
@@ -52,11 +78,13 @@ This application is designed for one-command deployment using Azure Developer CL
 
 All deployment automation is handled through PowerShell scripts executed by azd lifecycle hooks, making the entire process seamless and repeatable.
 
-## Deployment from Visual Studio Code using Code Spaces
+## Deployment from Visual Studio Code using Codespaces
 
-The easiest way to get started is to use GitHub CodeSpaces as all the tools are installed for you. Steps:
+The easiest way to get started is to use GitHub Codespaces as all the tools are installed for you. Steps:
 
-1. Click this button: [![Open in GitHub Codespaces](https://img.shields.io/static/v1?style=for-the-badge&label=GitHub+Codespaces&message=Open&color=brightgreen&logo=github)](https://github.com/codespaces/new?hide_repo_select=true&repo=916191305&machine=standardLinux32gb&devcontainer_path=.devcontainer%2Fdevcontainer.json&location=WestUs2). This will launch the repo is VS Code in a Browser.
+1. Clone this repo, then in your repo select "Code", "Codespaces" and click the plus to create a new Codespace: ![Open in GitHub Codespaces](images/CreateCodeSpace.png).
+
+   This will launch the repo is VS Code in a Browser.
 
 2. Next, we reccommend you launch the CodeSpace in *Visual Studio Code Dev Containers* as the Login from the command line to Azure using 2-factor Credentials often fails from a CodeSpace running in a Browser. To do this, left-click the name of the Codespace in the bottom-left of the screen and then select "Open in VS Code Desktop" as shown here:
 
