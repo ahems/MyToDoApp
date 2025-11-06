@@ -1,0 +1,47 @@
+{
+  "data-source": {
+    "database-type": "mssql",
+    "connection-string": "@env('DATABASE_CONNECTION_STRING')"
+  },
+  "runtime": {
+    "rest": {
+      "enabled": true,
+      "path": "/api"
+    },
+    "graphql": {
+      "enabled": true,
+      "path": "/graphql"
+    },
+    "host": {
+      "port": 5000,
+      "cors": {
+        "origins": ["@env('APP_URL')"],
+        "allow-credentials": true
+      },
+      "authentication": {
+        "provider": "AzureAD",
+        "jwt": {
+          "audience": "@env('API_APP_ID_URI')",
+          "issuer": "https://sts.windows.net/@env('TENANT_ID')/"
+        }
+      }
+    },
+    "telemetry": {
+      "application-insights": {
+        "enabled": true,
+        "connection-string": "@env('APPLICATIONINSIGHTS_CONNECTION_STRING')"
+      }
+    }
+  },
+  "entities": {
+    "todo": {
+      "source": "dbo.ToDo",
+      "permissions": [
+        {
+          "role": "authenticated",
+          "actions": ["*"]
+        }
+      ]
+    }
+  }
+}

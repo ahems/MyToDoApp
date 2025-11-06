@@ -164,3 +164,4 @@ cython_debug/
 deploy-acr-build-task.parameters.json
 
 .terraform/
+.azure

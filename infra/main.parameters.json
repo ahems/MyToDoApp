@@ -1,0 +1,63 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "environmentName": {
+      "value": "${AZURE_ENV_NAME}"
+    },
+    "aadAdminLogin": {
+      "value": "${NAME}"
+    },
+    "aadAdminObjectId": {
+      "value": "${OBJECT_ID}"
+    },
+    "webAppClientSecret": {
+      "value": "${CLIENT_SECRET}"
+    },
+    "webAppClientId": {
+      "value": "${CLIENT_ID}"
+    },
+    "apiAppIdUri": {
+      "value": "${API_APP_ID_URI}"
+    },
+    "restoreOpenAi": {
+      "value": false
+    },
+    "useFreeLimit": {
+      "value": false
+    },
+    "sqlDatabaseName": {
+      "value": "${SQL_DATABASE_NAME}"
+    },    
+    "cognitiveservicesname": {
+      "value": "${AZURE_OPENAI_ACCOUNT_NAME}"
+    },
+    "chatGptDeploymentVersion": {
+      "value": "${chatGptDeploymentVersion}"
+    },
+    "chatGptSkuName": {
+      "value": "${chatGptSkuName}"
+    },
+    "chatGptModelName": {
+      "value": "${chatGptModelName}"
+    },
+    "availableChatGptDeploymentCapacity": {
+      "value": "${availableChatGptDeploymentCapacity}"
+    },
+    "embeddingDeploymentVersion": {
+      "value": "${embeddingDeploymentVersion}"
+    },
+    "embeddingSkuName": {
+      "value": "${embeddingDeploymentSkuName}"
+    },
+    "embeddingModelName": {
+      "value": "${embeddingDeploymentModelName}"
+    },
+    "availableEmbeddingDeploymentCapacity": {
+      "value": "${availableEmbeddingDeploymentCapacity}"
+    },
+    "cognitiveservicesLocation": {
+      "value": "${AZURE_LOCATION}"
+    }
+  }
+}
