@@ -1,6 +1,5 @@
 import os
 import json
-from re import S
 import identity.web
 import msal
 from redis import Redis
@@ -22,10 +21,19 @@ import secrets
 import requests
 from flask import Flask, render_template, request, redirect, url_for, session
 from flask_session import Session
+from flask_wtf.csrf import CSRFProtect
 from recommendation_engine import RecommendationEngine
 from tab import Tab
 from priority import Priority
 from context_processors import inject_current_date
+from utils import (
+    validate_todo_name,
+    validate_priority,
+    validate_due_date,
+    validate_notes,
+    validate_todo_id,
+    sanitize_string,
+)
 from azure.identity import DefaultAzureCredential
 from azure.identity import ManagedIdentityCredential
 from azure.core.credentials import TokenCredential
@@ -34,7 +42,7 @@ from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry import trace
 from logging import INFO, getLogger
 import logging
-from typing import Any, Dict, cast
+from typing import Any, Dict, Optional, cast
 from datetime import datetime
 from flask import send_from_directory
 
@@ -49,6 +57,9 @@ if os.environ.get("IS_LOCALHOST", "false").lower() == "true":
 scope = ["User.Read"]
 
 app = Flask(__name__)
+
+# Initialize CSRF protection
+csrf = CSRFProtect(app)
 
 key_vault_name = os.environ.get("KEY_VAULT_NAME")
 AZURE_CLIENT_ID = os.environ.get("AZURE_CLIENT_ID")
@@ -515,10 +526,15 @@ logger.info("[init] MSAL authentication setup complete")
 
 @app.context_processor
 def inject_common_variables():
-    return inject_current_date()
+    """Inject common variables into all templates."""
+    from flask_wtf.csrf import generate_csrf
+    context = inject_current_date()
+    context['csrf_token'] = generate_csrf
+    return context
 
 @app.before_request
 def load_data_to_session():
+    """Load todos into session, using cache when possible."""
     logger.debug("[before_request] loading data into session")
 
     # Avoid touching the session for health/debug/static requests to prevent Redis writes
@@ -543,6 +559,20 @@ def load_data_to_session():
         session["todos"] = None
         return
     logger.debug("[before_request] authenticated user OID: %s", oid)
+    
+    # Check cache first
+    from services.cache import get_cache
+    cache = get_cache(ttl_seconds=60)  # Cache for 60 seconds
+    cached_todos = cache.get(oid)
+    
+    if cached_todos is not None:
+        logger.debug("[before_request] Using cached todos for OID: %s", oid)
+        session["todos"] = cached_todos
+        session["todo"] = None
+        session["TabEnum"] = Tab
+        session["PriorityEnum"] = Priority
+        session["selectedTab"] = Tab.NONE
+        return
        
     global api_url
     logger.debug("[before_request] Loading existing ToDo's from API for OID: %s", oid)
@@ -572,32 +602,40 @@ def load_data_to_session():
     # The payload for the POST request
     payload = {"query": query}
 
-    # Make the POST request
-    response = requests.post(api_url, json=payload, headers=headers)
-    logger.debug("[load_data] GraphQL todos response status=%s", response.status_code)
+    # Make the POST request with error handling
+    try:
+        response = requests.post(api_url, json=payload, headers=headers, timeout=30)
+        logger.debug("[load_data] GraphQL todos response status=%s", response.status_code)
 
-    if response.status_code == 200:
-        try:
-            resp_json = response.json()
-        except ValueError:
-            logger.warning("[load_data] Todos response not JSON decodable; treating as empty list. Raw: %.500s", response.text)
-            session["todos"] = []
+        if response.status_code == 200:
+            try:
+                resp_json = response.json()
+            except ValueError:
+                logger.warning("[load_data] Todos response not JSON decodable; treating as empty list. Raw: %.500s", response.text)
+                session["todos"] = []
+                cache.set(oid, [])
+            else:
+                data = resp_json.get("data") or {}
+                todos_root = data.get("todos") or {}
+                items = todos_root.get("items")
+                if items is None:
+                    logger.debug("[load_data] 'items' missing in todos response structure; defaulting to empty list")
+                    items = []
+                session["todos"] = items
+                cache.set(oid, items)  # Cache the results
         else:
-            data = resp_json.get("data") or {}
-            todos_root = data.get("todos") or {}
-            items = todos_root.get("items")
-            if items is None:
-                logger.debug("[load_data] 'items' missing in todos response structure; defaulting to empty list")
-                items = []
-            session["todos"] = items
-    else:
-        logger.warning("[load_data] Failed to load data from API (status=%s). Body: %.500s", response.status_code, response.text)
+            logger.warning("[load_data] Failed to load data from API (status=%s). Body: %.500s", response.status_code, response.text)
+            session["todos"] = []
+            # Don't cache errors
+    except requests.RequestException as e:
+        logger.error("[load_data] Request exception: %s", e)
         session["todos"] = []
+        # Don't cache errors
 
-    session["todo"] =None
+    session["todo"] = None
     session["TabEnum"] = Tab
     session["PriorityEnum"] = Priority
-    session["selectedTab"] =Tab.NONE
+    session["selectedTab"] = Tab.NONE
 
 @app.route("/")
 def index():
@@ -614,12 +652,19 @@ def index():
         return render_template("index.html")
 @app.route("/add", methods=["POST"])
 def add_todo():
-
+    """Add a new todo item with input validation."""
     global api_url
 
     user = auth.get_user()
     if not user:
         return redirect(url_for("login"))
+
+    # Validate input
+    todo_name = request.form.get("todo", "").strip()
+    is_valid, error_msg = validate_todo_name(todo_name)
+    if not is_valid:
+        logger.warning("[add_todo] Validation failed: %s", error_msg)
+        return f'Validation error: {error_msg}', 400
 
     logger.info("Adding TODO: User OID: %s", user.get("oid") if isinstance(user, dict) else None)
 
@@ -637,9 +682,9 @@ def add_todo():
         }
     }
     """
-    # Prepare the variables
+    # Prepare the variables with sanitized input
     variables = {
-        "name": request.form["todo"],
+        "name": sanitize_string(todo_name, max_length=200),
         "oid": user.get("oid") if isinstance(user, dict) else None
     }
 
@@ -648,11 +693,21 @@ def add_todo():
         'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
-    # Send the request
-    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
+    # Send the request with error handling
+    try:
+        response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers, timeout=30)
+    except requests.RequestException as e:
+        logger.error('[add_todo] Request exception: %s', e)
+        return 'An error occurred while connecting to the API', 500
 
     # Check for errors or handle the response as needed
     if response.status_code == 200:
+        # Invalidate cache for this user
+        from services.cache import get_cache
+        cache = get_cache()
+        oid = user.get("oid") if isinstance(user, dict) else None
+        if oid:
+            cache.invalidate(oid)
         return redirect(url_for('index'))
     else:
         try:
@@ -665,60 +720,106 @@ def add_todo():
 
 # Details of ToDo Item
 @app.route('/details/<int:id>', methods=['GET'])
-def details(id):
-
+def details(id: int):
+    """Show details of a todo item."""
     if not auth.get_user():
         return redirect(url_for("login"))
     
+    # Validate todo ID
+    is_valid, todo_id, error_msg = validate_todo_id(id)
+    if not is_valid:
+        logger.warning("[details] Invalid todo ID: %s", error_msg)
+        return redirect(url_for('index'))
+    
     global api_url
     
-    todo = get_todo_by_id(id, api_url)
+    try:
+        todo = get_todo_by_id(todo_id, api_url)
+    except RuntimeError as e:
+        logger.error("[details] Failed to fetch todo id=%s: %s", todo_id, e)
+        return redirect(url_for('index'))
 
     if todo is None:
         return redirect(url_for('index'))
     
-    session["selectedTab"] =Tab.DETAILS
+    session["selectedTab"] = Tab.DETAILS
     session["todo"] = todo
     
     return render_template('index.html')
 
 # Edit a new ToDo
 @app.route('/edit/<int:id>', methods=['GET'])
-def edit(id):
-
+def edit(id: int):
+    """Edit a todo item."""
     if not auth.get_user():
         return redirect(url_for("login"))
     
+    # Validate todo ID
+    is_valid, todo_id, error_msg = validate_todo_id(id)
+    if not is_valid:
+        logger.warning("[edit] Invalid todo ID: %s", error_msg)
+        return redirect(url_for('index'))
+    
     global api_url
     
-    todo = get_todo_by_id(id, api_url)
+    try:
+        todo = get_todo_by_id(todo_id, api_url)
+    except RuntimeError as e:
+        logger.error("[edit] Failed to fetch todo id=%s: %s", todo_id, e)
+        return redirect(url_for('index'))
 
     if todo is None:
         return redirect(url_for('index'))
     
-    session["todo"] =todo
-    session["selectedTab"] =Tab.EDIT
+    session["todo"] = todo
+    session["selectedTab"] = Tab.EDIT
     
     return render_template('index.html')
 
 # Save existing To Do Item
 @app.route('/update/<int:id>', methods=['POST'])
-def update_todo(id):
-
+def update_todo(id: int):
+    """Update an existing todo item with input validation."""
     if not auth.get_user():
         return redirect(url_for("login"))
 
-    session["selectedTab"] =Tab.DETAILS
-
-    if request.form.get('cancel') != None:
+    # Validate todo ID
+    is_valid, todo_id, error_msg = validate_todo_id(id)
+    if not is_valid:
+        logger.warning("[update_todo] Invalid todo ID: %s", error_msg)
         return redirect(url_for('index'))
 
-    # Get the data from the form
-    name = request.form['name']
+    session["selectedTab"] = Tab.DETAILS
+
+    if request.form.get('cancel') is not None:
+        return redirect(url_for('index'))
+
+    # Get and validate the data from the form
+    name = request.form.get('name', '').strip()
+    is_valid, error_msg = validate_todo_name(name)
+    if not is_valid:
+        logger.warning("[update_todo] Name validation failed: %s", error_msg)
+        return f'Validation error: {error_msg}', 400
+    
     due_date = request.form.get('duedate')
-    notes=request.form.get('notes')
-    priority=request.form.get('priority')
-    completed=request.form.get('completed')
+    is_valid, normalized_due_date, error_msg = validate_due_date(due_date)
+    if not is_valid:
+        logger.warning("[update_todo] Due date validation failed: %s", error_msg)
+        return f'Validation error: {error_msg}', 400
+    
+    notes = request.form.get('notes')
+    is_valid, sanitized_notes, error_msg = validate_notes(notes)
+    if not is_valid:
+        logger.warning("[update_todo] Notes validation failed: %s", error_msg)
+        return f'Validation error: {error_msg}', 400
+    
+    priority = request.form.get('priority')
+    is_valid, priority_int, error_msg = validate_priority(priority)
+    if not is_valid:
+        logger.warning("[update_todo] Priority validation failed: %s", error_msg)
+        return f'Validation error: {error_msg}', 400
+    
+    completed = request.form.get('completed') == "on"
 
     # Prepare the GraphQL mutation
     mutation = """
@@ -740,14 +841,14 @@ def update_todo(id):
     }
     """
 
-    # Prepare the variables
+    # Prepare the variables with validated data
     variables = {
-        "id": id,
-        "name": name,
-        "due_date": due_date if due_date != "None" else None,
-        "notes": notes,
-        "priority": int(priority) if priority is not None else None,
-        "completed": completed == "on"
+        "id": todo_id,
+        "name": sanitize_string(name, max_length=200),
+        "due_date": normalized_due_date,
+        "notes": sanitized_notes,
+        "priority": priority_int,
+        "completed": completed
     }
 
     headers = {
@@ -755,25 +856,46 @@ def update_todo(id):
         'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
-    # Send the request
-    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
-    logger.debug("[update_todo] GraphQL update response status=%s", response.status_code)
+    # Send the request with error handling
+    try:
+        response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers, timeout=30)
+        logger.debug("[update_todo] GraphQL update response status=%s", response.status_code)
+    except requests.RequestException as e:
+        logger.error('[update_todo] Request exception: %s', e)
+        return 'An error occurred while connecting to the API', 500
 
     # Check for errors or handle the response as needed
     if response.status_code == 200:
+        # Invalidate cache for this user
+        from services.cache import get_cache
+        cache = get_cache()
+        user = auth.get_user()
+        oid = user.get("oid") if isinstance(user, dict) else None
+        if oid:
+            cache.invalidate(oid)
         return redirect(url_for('index'))
     else:
-        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        try:
+            error_data = response.json()
+            error_message = error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+        except (ValueError, KeyError, IndexError):
+            error_message = f"API error (status {response.status_code}): {response.text[:200]}"
         logger.error('Update TODO error: %s', error_message)
         return f'An error occurred: {error_message}', 500
 
 
 # Delete a ToDo
 @app.route('/remove/<int:id>', methods=["POST", "GET"])
-def remove_todo(id):
-
+def remove_todo(id: int):
+    """Delete a todo item."""
     if not auth.get_user():
         return redirect(url_for("login"))
+
+    # Validate todo ID
+    is_valid, todo_id, error_msg = validate_todo_id(id)
+    if not is_valid:
+        logger.warning("[remove_todo] Invalid todo ID: %s", error_msg)
+        return redirect(url_for('index'))
 
     # Prepare the GraphQL mutation
     mutation = """
@@ -786,7 +908,7 @@ def remove_todo(id):
 
     # Prepare the variables
     variables = {
-        "id": id
+        "id": todo_id
     }
 
     headers = {
@@ -794,24 +916,44 @@ def remove_todo(id):
         'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
-    # Send the request
-    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
-    logger.debug("[remove_todo] GraphQL delete response status=%s", response.status_code)
+    # Send the request with error handling
+    try:
+        response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers, timeout=30)
+        logger.debug("[remove_todo] GraphQL delete response status=%s", response.status_code)
+    except requests.RequestException as e:
+        logger.error('[remove_todo] Request exception: %s', e)
+        return 'An error occurred while connecting to the API', 500
 
     # Check for errors or handle the response as needed
     if response.status_code == 200:
+        # Invalidate cache for this user
+        from services.cache import get_cache
+        cache = get_cache()
+        user = auth.get_user()
+        oid = user.get("oid") if isinstance(user, dict) else None
+        if oid:
+            cache.invalidate(oid)
         session["selectedTab"] = Tab.NONE
         return redirect(url_for('index'))
     else:
-        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        try:
+            error_data = response.json()
+            error_message = error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+        except (ValueError, KeyError, IndexError):
+            error_message = f"API error (status {response.status_code}): {response.text[:200]}"
         logger.error('Remove TODO error: %s', error_message)
         return f'An error occurred: {error_message}', 500
 
 # Show AI recommendations
 @app.route('/recommend/<int:id>', methods=['GET'])
 @app.route('/recommend/<int:id>/<refresh>', methods=['GET'])
-async def recommend(id, refresh=False):
-
+def recommend(id: int, refresh: bool = False):
+    """Show AI recommendations for a todo item.
+    
+    Args:
+        id: The todo item ID
+        refresh: Whether to refresh recommendations (ignore cached)
+    """
     if not auth.get_user():
         return redirect(url_for("login"))
 
@@ -819,7 +961,11 @@ async def recommend(id, refresh=False):
     session["selectedTab"] = Tab.RECOMMENDATIONS
     recommendation_engine = RecommendationEngine()
     
-    todo = get_todo_by_id(id, api_url)
+    try:
+        todo = get_todo_by_id(id, api_url)
+    except RuntimeError as e:
+        logger.error("[recommend] Failed to fetch todo id=%s: %s", id, e)
+        return f'An error occurred: {str(e)}', 500
 
     if todo is None:
         return redirect(url_for('index'))
@@ -832,18 +978,29 @@ async def recommend(id, refresh=False):
             if session["todo"].get('recommendations_json') is not None:
                 session["todo"]['recommendations'] = json.loads(session["todo"]['recommendations_json'])
                 return render_template('index.html', appinsights_connection_string=app_insights_connection_string)
-        except ValueError as e:
-            with tracer.start_as_current_span("app_initialization_span"):print("Error: %s", e)
+        except (ValueError, json.JSONDecodeError) as e:
+            logger.warning("[recommend] Failed to parse recommendations_json for id=%s: %s", id, e)
+            # Continue to generate new recommendations
 
     previous_links_str = None
     if refresh:
-        session["todo"]['recommendations'] = json.loads(session["todo"]['recommendations_json'])
-        # Extract links
-        links = [item["link"] for item in session["todo"]['recommendations']]
-        # Convert list of links to a single string
-        previous_links_str = ", ".join(links)
+        try:
+            session["todo"]['recommendations'] = json.loads(session["todo"]['recommendations_json'])
+            # Extract links
+            links = [item["link"] for item in session["todo"]['recommendations']]
+            # Convert list of links to a single string
+            previous_links_str = ", ".join(links)
+        except (ValueError, json.JSONDecodeError, KeyError, TypeError) as e:
+            logger.warning("[recommend] Failed to extract previous links for refresh: %s", e)
+            previous_links_str = None
 
-    session["todo"]['recommendations'] = await recommendation_engine.get_recommendations(session["todo"]['name'], previous_links_str)
+    # Run async recommendation generation synchronously
+    import asyncio
+    try:
+        session["todo"]['recommendations'] = asyncio.run(recommendation_engine.get_recommendations(session["todo"]['name'], previous_links_str))
+    except Exception as e:
+        logger.error("[recommend] Failed to generate recommendations for id=%s: %s", id, e)
+        session["todo"]['recommendations'] = [{"title": "Sorry, unable to generate recommendations at this time", "link": ""}]
 
     # Prepare the GraphQL mutation to save the recommendations
     mutation = """
@@ -866,28 +1023,59 @@ async def recommend(id, refresh=False):
         'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
-    # Send the request to save the recommendations
-    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
-    logger.debug("[recommend] GraphQL update recommendations response status=%s", response.status_code)
+    # Send the request to save the recommendations with error handling
+    try:
+        response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers, timeout=30)
+        logger.debug("[recommend] GraphQL update recommendations response status=%s", response.status_code)
+    except requests.RequestException as e:
+        logger.error('[recommend] Request exception: %s', e)
+        return 'An error occurred while connecting to the API', 500
 
     if response.status_code != 200:
-        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        try:
+            error_data = response.json()
+            error_message = error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+        except (ValueError, KeyError, IndexError):
+            error_message = f"API error (status {response.status_code}): {response.text[:200]}"
         logger.error('Recommend error: %s', error_message)
         return f'An error occurred: {error_message}', 500
+
+    # Invalidate cache for this user since recommendations were updated
+    from services.cache import get_cache
+    cache = get_cache()
+    user = auth.get_user()
+    oid = user.get("oid") if isinstance(user, dict) else None
+    if oid:
+        cache.invalidate(oid)
 
     return render_template('index.html', appinsights_connection_string=app_insights_connection_string)
 
 @app.route('/completed/<int:id>/<complete>', methods=['GET'])
-def completed(id, complete):
-
+def completed(id: int, complete: str):
+    """Update the completion status of a todo item."""
     if not auth.get_user():
         return redirect(url_for("login"))
+
+    # Validate todo ID
+    is_valid, todo_id, error_msg = validate_todo_id(id)
+    if not is_valid:
+        logger.warning("[completed] Invalid todo ID: %s", error_msg)
+        return redirect(url_for('index'))
+
+    # Validate complete parameter
+    if complete not in ["true", "false"]:
+        logger.warning("[completed] Invalid complete parameter: %s", complete)
+        return redirect(url_for('index'))
 
     session["selectedTab"] = Tab.NONE
 
     global api_url
     
-    todo = get_todo_by_id(id, api_url)
+    try:
+        todo = get_todo_by_id(todo_id, api_url)
+    except RuntimeError as e:
+        logger.error("[completed] Failed to fetch todo id=%s: %s", todo_id, e)
+        return redirect(url_for('index'))
 
     if todo is None:
         return redirect(url_for('index'))
@@ -917,18 +1105,34 @@ def completed(id, complete):
 
     # Prepare the variables for the mutation
     variables = {
-        "id": id,
+        "id": todo_id,
         "completed": session["todo"]['completed']
     }
 
-    # Send the request to update the completion status
-    response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers)
-    logger.debug("[completed] GraphQL update completion response status=%s", response.status_code)
+    # Send the request to update the completion status with error handling
+    try:
+        response = requests.post(api_url, json={'query': mutation, 'variables': variables}, headers=headers, timeout=30)
+        logger.debug("[completed] GraphQL update completion response status=%s", response.status_code)
+    except requests.RequestException as e:
+        logger.error('[completed] Request exception: %s', e)
+        return 'An error occurred while connecting to the API', 500
 
     if response.status_code != 200:
-        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
+        try:
+            error_data = response.json()
+            error_message = error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+        except (ValueError, KeyError, IndexError):
+            error_message = f"API error (status {response.status_code}): {response.text[:200]}"
         logger.error('Completion update error: %s', error_message)
         return f'An error occurred: {error_message}', 500
+
+    # Invalidate cache for this user
+    from services.cache import get_cache
+    cache = get_cache()
+    user = auth.get_user()
+    oid = user.get("oid") if isinstance(user, dict) else None
+    if oid:
+        cache.invalidate(oid)
 
     return redirect(url_for('index'))
 
@@ -973,8 +1177,19 @@ def logout():
     return redirect(auth.log_out(url_for("index", _external=True)))
 
 
-def get_todo_by_id(id, api_url):
-
+def get_todo_by_id(id: int, api_url: str) -> Optional[Dict[str, Any]]:
+    """Fetch a todo item by ID from the GraphQL API.
+    
+    Args:
+        id: The todo item ID
+        api_url: The GraphQL API endpoint URL
+        
+    Returns:
+        Dict containing the todo item data, or None if not found
+        
+    Raises:
+        RuntimeError: If API request fails
+    """
     # Prepare the GraphQL query to fetch the todo item
     query = """
         query Todo_by_pk($id: Int!) {
@@ -997,20 +1212,35 @@ def get_todo_by_id(id, api_url):
         'Authorization' : f"Bearer {_get_api_access_token()}"
     }
 
-    # Send the request to fetch the todo item
-    response = requests.post(api_url, json={'query': query, 'variables': variables}, headers=headers)
-    logger.debug("[get_todo_by_id] status=%s for id=%s", response.status_code, id)
+    try:
+        # Send the request to fetch the todo item
+        response = requests.post(api_url, json={'query': query, 'variables': variables}, headers=headers, timeout=30)
+        logger.debug("[get_todo_by_id] status=%s for id=%s", response.status_code, id)
 
-    if response.status_code == 200:
-        todo = response.json().get('data', {}).get('todo_by_pk')
-        if todo:
-            return todo
+        if response.status_code == 200:
+            try:
+                resp_json = response.json()
+            except ValueError:
+                logger.error("[get_todo_by_id] Invalid JSON response for id=%s", id)
+                raise RuntimeError("Invalid JSON response from API")
+            
+            todo = resp_json.get('data', {}).get('todo_by_pk')
+            if todo:
+                return todo
+            else:
+                logger.debug("[get_todo_by_id] Todo item not found for id=%s", id)
+                return None
         else:
-            return "Todo item not found", 404
-    else:
-        error_message = response.json().get('errors', [{'message': 'Unknown error'}])[0]['message']
-        logger.error('Get TODO by id error: %s', error_message)
-        return f'An error occurred: {error_message}', 500
+            try:
+                error_data = response.json()
+                error_message = error_data.get('errors', [{'message': 'Unknown error'}])[0]['message']
+            except (ValueError, KeyError, IndexError):
+                error_message = f"API error (status {response.status_code}): {response.text[:200]}"
+            logger.error('Get TODO by id error: %s', error_message)
+            raise RuntimeError(f"Failed to fetch todo: {error_message}")
+    except requests.RequestException as e:
+        logger.error("[get_todo_by_id] Request exception for id=%s: %s", id, e)
+        raise RuntimeError(f"API request failed: {str(e)}")
 
 if __name__ == "__main__":
     # Do NOT reassign secret_key here; earlier initialization already set it from env or generated one.

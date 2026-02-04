@@ -59,6 +59,7 @@
                     </ol>
                 </form>
                 <form action="/add" method="post" class="my-4">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                     <span class="input-group-text">
                         <input type="text" id="todo" name="todo" maxlength="75" class="form-control" placeholder="Add a new task">
                         
@@ -122,6 +123,7 @@
                 <div id="edit-div" class="card">
                     <div class="card-body">
                         <form action="{{ url_for('update_todo', id=session['todo'].id) }}" method="post">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"/>
                             <input type="hidden" name="id" value="{{session['todo'].id}}">
                             <div class="form-group">
                                 <label for="name">Name:</label>

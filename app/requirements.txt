@@ -1,6 +1,7 @@
 openai
 flask
 flask[async]
+flask-wtf>=1.2.0
 azure-keyvault-secrets
 azure-identity
 azure-monitor-opentelemetry
